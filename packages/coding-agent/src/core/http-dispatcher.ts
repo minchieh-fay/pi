@@ -78,36 +78,4 @@ function createUndiciOriginDispatcher(origin: string | URL, options: object): un
 	);
 }
 
-export function configureHttpDispatcher(timeoutMs: number = DEFAULT_HTTP_IDLE_TIMEOUT_MS): void {
-	const normalizedTimeoutMs = parseHttpIdleTimeoutMs(timeoutMs);
-	if (normalizedTimeoutMs === undefined) {
-		throw new Error(`Invalid HTTP idle timeout: ${String(timeoutMs)}`);
-	}
-	const dispatcher = withUndiciErrorListener(
-		new undici.EnvHttpProxyAgent({
-			allowH2: false,
-			// Keep HTTP origins on CONNECT tunnels as they were before Undici 8.7.
-			proxyTunnel: true,
-			bodyTimeout: normalizedTimeoutMs,
-			connect: {
-				autoSelectFamilyAttemptTimeout: DEFAULT_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS,
-			},
-			headersTimeout: normalizedTimeoutMs,
-			clientFactory: createUndiciClient,
-			factory: createUndiciOriginDispatcher,
-		}),
-	);
-	undici.setGlobalDispatcher(dispatcher);
-	// Keep fetch and the dispatcher on the same undici implementation. Node 26.0's
-	// bundled fetch can otherwise consume compressed responses through npm undici's
-	// dispatcher without decompressing them, causing response.json() failures.
-	// If a caller replaced fetch after module load, preserve that deliberate override.
-	const shouldInstallGlobals =
-		installedGlobalFetch === undefined
-			? globalThis.fetch === originalGlobalFetch
-			: globalThis.fetch === installedGlobalFetch;
-	if (shouldInstallGlobals) {
-		undici.install?.();
-		installedGlobalFetch = globalThis.fetch;
-	}
-}
+
