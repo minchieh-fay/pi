@@ -697,75 +697,14 @@ export async function main(args: string[], options?: MainOptions) {
 		unknownFlags: new Map(),
 		diagnostics: [],
 	};
-	// 输出参数解析诊断信息（错误/警告）
-	if (parsed.diagnostics.length > 0) {
-		for (const d of parsed.diagnostics) {
-			const color = d.type === "error" ? chalk.red : chalk.yellow;
-			console.error(color(`${d.type === "error" ? "Error" : "Warning"}: ${d.message}`));
-		}
-		if (parsed.diagnostics.some((d) => d.type === "error")) {
-			process.exit(1);
-		}
-	}
-	time("parseArgs");
-
-	// --version：输出版本号并退出
-	if (parsed.version) {
-		console.log(VERSION);
-		process.exit(0);
-	}
-
-	// --export：将会话导出为 HTML 文件
-	if (parsed.export) {
-		let result: string;
-		try {
-			const outputPath = parsed.messages.length > 0 ? parsed.messages[0] : undefined;
-			result = await exportFromFile(parsed.export, outputPath);
-		} catch (error: unknown) {
-			const message = error instanceof Error ? error.message : "Failed to export session";
-			console.error(chalk.red(`Error: ${message}`));
-			process.exit(1);
-		}
-		console.log(`Exported to: ${result}`);
-		process.exit(0);
-	}
 
 	// 根据 TTY 状态和参数确定应用运行模式
-	let appMode = resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY);
-	// 非交互模式且非纯元数据命令时接管 stdout
-	const shouldTakeOverStdout = appMode !== "interactive" && !isPlainRuntimeMetadataCommand(parsed);
-	if (shouldTakeOverStdout) {
-		takeOverStdout();
-	}
+	let appMode = "interactive";
 
-	// RPC 模式不支持 @file 参数
-	if (parsed.mode === "rpc" && parsed.fileArgs.length > 0) {
-		console.error(chalk.red("Error: @file arguments are not supported in RPC mode"));
-		process.exit(1);
-	}
-
-	// 验证 fork 和 session-id 参数合法性
-	validateForkFlags(parsed);
-	validateSessionIdFlags(parsed);
-
-	// 运行数据库迁移，并获取已迁移的认证提供商和弃用警告
-	const { migratedAuthProviders: migratedProviders, deprecationWarnings } = runMigrations(cwd);
-	time("runMigrations");
 
 	// 创建启动阶段 settingsManager 并收集诊断信息
 	const startupSettingsManager = SettingsManager.create(cwd, agentDir);
 	const startupSettingsDiagnostics = collectSettingsDiagnostics(startupSettingsManager);
-
-	// 首次运行设置：主题选择和分析数据上报选项
-	if (appMode === "interactive" && !parsed.help && parsed.listModels === undefined && shouldRunFirstTimeSetup()) {
-		await showFirstTimeSetup(startupSettingsManager);
-		time("firstTimeSetup");
-	}
-
-	// 应用用户指定的主题
-	if (appMode === "interactive" && parsed.useTheme !== undefined) {
-		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
-	}
 
 	// 确定会话目录：优先使用 --session-dir，其次环境变量，最后从设置中读取
 	const envSessionDir = process.env[ENV_SESSION_DIR];
@@ -1002,7 +941,7 @@ export async function main(args: string[], options?: MainOptions) {
 			appMode = "print";
 		}
 	}
-	time("readPipedStdin");
+
 
 	// 构建初始消息（包含文件内容和 stdin）
 	const { initialMessage, initialImages } = await prepareInitialMessage(
@@ -1010,19 +949,14 @@ export async function main(args: string[], options?: MainOptions) {
 		settingsManager.getImageAutoResize(),
 		stdinContent,
 	);
-	time("prepareInitialMessage");
+
 	// 初始化主题验证器
 	setThemeJsonValidator(validateThemeJson);
 	// 初始化主题
 	initTheme(settingsManager.getTheme(), appMode === "interactive");
-	time("initTheme");
 
-	// 在交互模式下显示弃用警告
-	if (appMode === "interactive" && deprecationWarnings.length > 0) {
-		await showDeprecationWarnings(deprecationWarnings);
-	}
 
-	time("resolveModelScope");
+	
 	// 汇总并去重所有诊断信息
 	const startupDiagnostics = deduplicateDiagnostics([...startupSettingsDiagnostics, ...runtime.diagnostics]);
 	const hasRuntimeErrors = runtime.diagnostics.some((diagnostic) => diagnostic.type === "error");
@@ -1068,7 +1002,6 @@ export async function main(args: string[], options?: MainOptions) {
 		await runRpcMode(runtime);
 	} else if (appMode === "interactive") {
 		const interactiveMode = new InteractiveMode(runtime, {
-			migratedProviders,
 			startupDiagnostics,
 			modelFallbackMessage,
 			autoTrustOnReloadCwd,
