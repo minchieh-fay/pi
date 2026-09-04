@@ -9,7 +9,7 @@ import { createInterface } from "node:readline";
 import { type ImageContent, modelsAreEqual } from "@earendil-works/pi-ai";
 import { setCapabilityOverrides } from "@earendil-works/pi-tui";
 import chalk from "chalk";
-import { type Args, type Mode, normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
+import { type Args, type Mode, normalizeSessionName, printHelp } from "./cli/args.ts";
 import {
 	type AuthCheckResult,
 	checkProviderAuth,
@@ -74,7 +74,6 @@ import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./modes/interactive/theme/theme.ts";
 import { validateThemeJson } from "./modes/interactive/theme/theme-json.ts";
-import { handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
@@ -154,7 +153,12 @@ async function runAuthCommand(args: string[]): Promise<boolean> {
 	}
 	if (!command) return false;
 
-	const parsed = parseArgs(command.args);
+	const parsed: Args = {
+		messages: [],
+		fileArgs: [],
+		unknownFlags: new Map(),
+		diagnostics: [],
+	};
 	if (parsed.unknownFlags.size > 0) {
 		const option = parsed.unknownFlags.keys().next().value;
 		console.error(chalk.red(`Unknown option --${option} for "${getAuthCommandName(command.kind)}".`));
@@ -685,29 +689,14 @@ export async function main(args: string[], options?: MainOptions) {
 	// 获取当前工作目录和 agent 目录
 	const cwd = process.cwd();
 	const agentDir = getAgentDir();
-	// 创建仅用于解析代理设置的临时 settingsManager（未信任项目上下文）
-	const bootstrapSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
-	// 应用全局 HTTP 代理设置
-	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);
-
-	// 处理包管理命令（install/uninstall/update/list）
-	if (await handlePackageCommand(args, { extensionFactories })) {
-		const exitCode = process.exitCode ?? 0;
-		// Windows 下成功更新的 pi update 命令不立即退出，让事件循环自然排空
-		if (process.platform === "win32" && exitCode === 0 && args[0] === "update") {
-			return;
-		}
-		process.exit(exitCode);
-		return;
-	}
-
-	// 处理配置命令
-	if (await handleConfigCommand(args, { extensionFactories })) {
-		return;
-	}
 
 	// 解析 CLI 参数
-	const parsed = parseArgs(args);
+	const parsed: Args = {
+		messages: [],
+		fileArgs: [],
+		unknownFlags: new Map(),
+		diagnostics: [],
+	};
 	// 输出参数解析诊断信息（错误/警告）
 	if (parsed.diagnostics.length > 0) {
 		for (const d of parsed.diagnostics) {
