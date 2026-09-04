@@ -23,6 +23,7 @@ packages/ai/src/providers/.model-generation-*/
 *.swp
 *.swo
 *~
+[0-9].txt
 
 # Package specific
 .npm/
