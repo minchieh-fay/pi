@@ -74,7 +74,7 @@ import { runMigrations, showDeprecationWarnings } from "./migrations.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./modes/interactive/theme/theme.ts";
 import { validateThemeJson } from "./modes/interactive/theme/theme-json.ts";
-import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
+import { handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
@@ -681,30 +681,6 @@ export interface MainOptions {
 export async function main(args: string[], options?: MainOptions) {
 	// 合并内置扩展和用户提供的扩展工厂
 	const extensionFactories = [...builtInExtensions, ...(options?.extensionFactories ?? [])];
-	// 检测离线模式：通过 --offline 标志或环境变量 PI_OFFLINE
-	const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.PI_OFFLINE);
-	if (offlineMode) {
-		process.env.PI_OFFLINE = "1";
-		process.env.PI_SKIP_VERSION_CHECK = "1";
-	}
-
-	// 优先处理 auth 子命令，完成后直接返回
-	if (await runAuthCommand(args)) {
-		return;
-	}
-
-	// 处理实验性命令（server/client），完成后根据是否为客户端决定退出
-	if (await runExperimentalCommand(args)) {
-		if (args[0] === "client") process.exit(process.exitCode ?? 0);
-		return;
-	}
-
-	// Windows 平台：清理自更新隔离区中的旧文件
-	if (process.platform === "win32") {
-		cleanupWindowsSelfUpdateQuarantine(getPackageDir());
-	}
-	// 清理受管理的安装残留
-	cleanupManagedInstall();
 
 	// 获取当前工作目录和 agent 目录
 	const cwd = process.cwd();
@@ -1088,7 +1064,7 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 
 	// RPC 模式下在后台刷新模型目录
-	if (!offlineMode && appMode === "rpc") {
+	if ( appMode === "rpc") {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 15_000);
 		void modelRuntime

@@ -147,27 +147,6 @@ function cleanupManagedStaging(managedRoot: string): void {
 	}
 }
 
-export function cleanupManagedInstall(): void {
-	let managedRoot: string | undefined;
-	try {
-		managedRoot = getActiveManagedInstallRoot();
-	} catch {
-		return;
-	}
-	if (!managedRoot) return;
-
-	try {
-		const releaseLock = lockfile.lockSync(join(managedRoot, "update"), { realpath: false });
-		try {
-			cleanupManagedStaging(managedRoot);
-		} finally {
-			releaseLock();
-		}
-	} catch {
-		// A live update owns the staging directory, or cleanup is unavailable.
-	}
-}
-
 async function runManagedSelfUpdate(managedRoot: string, version: string): Promise<void> {
 	if (!MANAGED_RELEASE_VERSION_RE.test(version)) {
 		throw new Error(`Invalid managed release version: ${version}`);
