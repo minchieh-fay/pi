@@ -13,18 +13,10 @@ type TimingLabel = "main" | "extensions";
 
 const timingNamespaces = new Map<TimingLabel, TimingNamespace>();
 
-export function resetTimings(namespace: TimingLabel = "main"): void {
-	if (!ENABLED) return;
-	timingNamespaces.set(namespace, { timings: [], lastTime: Date.now() });
-}
 
 export function time(label: string, namespace: TimingLabel = "main"): void {
 	if (!ENABLED) return;
 	const now = Date.now();
-
-	if (!timingNamespaces.has(namespace)) {
-		resetTimings(namespace);
-	}
 
 	const timingNamespace = timingNamespaces.get(namespace)!;
 	timingNamespace.timings.push({ label, ms: now - timingNamespace.lastTime });
