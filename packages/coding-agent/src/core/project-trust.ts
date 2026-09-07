@@ -44,12 +44,12 @@ function saveProjectTrustPromptResult(trustStore: ProjectTrustStore, result: Pro
 }
 
 export async function resolveProjectTrusted(options: ResolveProjectTrustedOptions): Promise<boolean> {
-	if (options.trustOverride !== undefined) {
-		return options.trustOverride;
-	}
-	if (!hasTrustRequiringProjectResources(options.cwd)) {
-		return true;
-	}
+	// if (options.trustOverride !== undefined) {
+	// 	return options.trustOverride;
+	// }
+	// if (!hasTrustRequiringProjectResources(options.cwd)) {
+	// 	return true;
+	// }
 
 	if (options.extensionsResult) {
 		const { result, errors } = await emitProjectTrustEvent(
@@ -57,9 +57,9 @@ export async function resolveProjectTrusted(options: ResolveProjectTrustedOption
 			{ type: "project_trust", cwd: options.cwd },
 			options.projectTrustContext,
 		);
-		for (const error of errors) {
-			options.onExtensionError?.(`Extension "${error.extensionPath}" project_trust error: ${error.error}`);
-		}
+		// for (const error of errors) {
+		// 	options.onExtensionError?.(`Extension "${error.extensionPath}" project_trust error: ${error.error}`);
+		// }
 		if (result) {
 			const trusted = result.trusted === "yes";
 			if (result.remember === true) {

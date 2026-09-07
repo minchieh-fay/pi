@@ -359,16 +359,16 @@ export class SettingsManager {
 		options: SettingsManagerCreateOptions,
 		settingsPaths: SettingsPaths = {},
 	): SettingsManager {
-		const projectTrusted = options.projectTrusted ?? true;
+		const projectTrusted = false;
 		const globalLoad = SettingsManager.tryLoadFromStorage(storage, "global");
 		const projectLoad = SettingsManager.tryLoadFromStorage(storage, "project", projectTrusted);
 		const initialErrors: SettingsError[] = [];
-		if (globalLoad.error) {
-			initialErrors.push(toSettingsError("global", globalLoad.error, settingsPaths.global));
-		}
-		if (projectLoad.error) {
-			initialErrors.push(toSettingsError("project", projectLoad.error, settingsPaths.project));
-		}
+		// if (globalLoad.error) {
+		// 	initialErrors.push(toSettingsError("global", globalLoad.error, settingsPaths.global));
+		// }
+		// if (projectLoad.error) {
+		// 	initialErrors.push(toSettingsError("project", projectLoad.error, settingsPaths.project));
+		// }
 
 		return new SettingsManager(
 			storage,
@@ -966,8 +966,7 @@ export class SettingsManager {
 	}
 
 	getDefaultProjectTrust(): DefaultProjectTrust {
-		const value = this.globalSettings.defaultProjectTrust;
-		return value === "always" || value === "never" ? value : "ask";
+		return "ask";
 	}
 
 	setDefaultProjectTrust(defaultProjectTrust: DefaultProjectTrust): void {

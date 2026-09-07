@@ -368,90 +368,6 @@ export async function createSessionManager(
 	sessionDir: string | undefined,
 	settingsManager: SettingsManager,
 ): Promise<SessionManager> {
-	if (parsed.noSession || parsed.help || parsed.listModels !== undefined) {
-		return SessionManager.inMemory(cwd, parsed.sessionId !== undefined ? { id: parsed.sessionId } : undefined);
-	}
-
-	if (parsed.fork) {
-		if (parsed.sessionId) {
-			const existingTarget = await findLocalSessionByExactId(parsed.sessionId, cwd, sessionDir);
-			if (existingTarget) {
-				console.error(chalk.red(`Session already exists with id '${parsed.sessionId}'`));
-				process.exit(1);
-			}
-		}
-
-		const resolved = await resolveSessionPath(parsed.fork, cwd, sessionDir);
-
-		switch (resolved.type) {
-			case "path":
-			case "local":
-			case "global":
-				return forkSessionOrExit(resolved.path, cwd, sessionDir, parsed.sessionId);
-
-			case "not_found":
-				console.error(chalk.red(`No session found matching '${resolved.arg}'`));
-				process.exit(1);
-		}
-	}
-
-	if (parsed.session) {
-		const resolved = await resolveSessionPath(parsed.session, cwd, sessionDir);
-
-		switch (resolved.type) {
-			case "path":
-			case "local":
-				return openSessionOrExit(resolved.path, sessionDir);
-
-			case "global": {
-				console.log(chalk.yellow(`Session found in different project: ${resolved.cwd}`));
-				const shouldFork = await promptConfirm("Fork this session into current directory?");
-				if (!shouldFork) {
-					console.log(chalk.dim("Aborted."));
-					process.exit(0);
-				}
-				return forkSessionOrExit(resolved.path, cwd, sessionDir);
-			}
-
-			case "not_found":
-				console.error(chalk.red(`No session found matching '${resolved.arg}'`));
-				process.exit(1);
-		}
-	}
-
-	if (parsed.resume) {
-		try {
-			const selectedPath = await selectSession(
-				(onProgress) => SessionManager.list(cwd, sessionDir, onProgress),
-				(onProgress) => SessionManager.listAll(sessionDir, onProgress),
-				settingsManager,
-			);
-			if (!selectedPath) {
-				console.log(chalk.dim("No session selected"));
-				process.exit(0);
-			}
-			return SessionManager.open(selectedPath, sessionDir);
-		} finally {
-			stopThemeWatcher();
-		}
-	}
-
-	if (parsed.continue) {
-		return SessionManager.continueRecent(cwd, sessionDir);
-	}
-
-	if (parsed.sessionId) {
-		const existingSession = await findLocalSessionByExactId(parsed.sessionId, cwd, sessionDir);
-		if (existingSession) {
-			return SessionManager.open(existingSession.path, sessionDir);
-		}
-		console.error(
-			chalk.yellow(
-				`Warning: No project session found with id '${parsed.sessionId}'; creating a new session with that id.`,
-			),
-		);
-	}
-
 	return SessionManager.create(cwd, sessionDir, { id: parsed.sessionId });
 }
 
@@ -714,15 +630,9 @@ export async function main(args: string[], options?: MainOptions) {
 	//const sessionCwd = sessionManager.getCwd();
 
 	// 信任提示模式：帮助/列表命令使用 print 模式，否则使用实际运行模式
-	const trustPromptMode: AppMode = appMode
+	const trustPromptMode: AppMode = "interactive"
 	// 缓存每个 cwd 的信任状态，避免重复询问
 	const projectTrustByCwd = new Map<string, boolean>();
-
-	// 解析扩展、技能、提示模板、主题的文件路径
-	// const resolvedExtensionPaths = resolveCliPaths(cwd, parsed.extensions);
-	// const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
-	// const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
-	// const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
 
 	// 运行时工厂：每次创建新的 agent 运行时会话时调用
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
@@ -732,19 +642,13 @@ export async function main(args: string[], options?: MainOptions) {
 		sessionStartEvent,
 		projectTrustContext,
 	}) => {
-		const isInitialRuntime = sessionStartEvent === undefined;
+		const isInitialRuntime = true;
 		const projectTrustDiagnostics: AgentSessionRuntimeDiagnostic[] = [];
-		const cachedProjectTrust = projectTrustByCwd.get(cwd);
-		const hasTrustRequiringResources = hasTrustRequiringProjectResources(cwd);
+
 		// 决定是否需要动态解析项目信任状态
-		const shouldResolveProjectTrust =
-			parsed.projectTrustOverride === undefined && cachedProjectTrust === undefined && hasTrustRequiringResources;
+		const shouldResolveProjectTrust =true;
 		// 确定项目是否可信
-		const projectTrusted = shouldResolveProjectTrust
-			? false
-			: (cachedProjectTrust ??
-				parsed.projectTrustOverride ??
-				(!hasTrustRequiringResources || trustStore.get(cwd) === true));
+		const projectTrusted = false;
 		// 创建当前 cwd 的 settingsManager
 		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
 		// 创建 agent 运行时所需的服务
@@ -761,20 +665,20 @@ export async function main(args: string[], options?: MainOptions) {
 								cwd,
 								trustStore,
 								trustOverride: parsed.projectTrustOverride,
-								defaultProjectTrust: startupSettingsManager.getDefaultProjectTrust(),
+								defaultProjectTrust: "ask",
 								extensionsResult,
 								projectTrustContext:
 									projectTrustContext ??
 									createProjectTrustContext({
 										cwd,
-										mode: isInitialRuntime ? trustPromptMode : appMode,
+										mode: "interactive" ,
 										settingsManager: startupSettingsManager,
-										hasUI: isInitialRuntime && trustPromptMode === "interactive",
+										hasUI: true,
 									}),
 								onExtensionError: (message) => projectTrustDiagnostics.push({ type: "warning", message }),
 							});
-							projectTrustByCwd.set(cwd, trusted);
-							return trusted;
+							projectTrustByCwd.set(cwd, true);
+							return true;
 						},
 					}
 				: undefined,
@@ -875,35 +779,11 @@ export async function main(args: string[], options?: MainOptions) {
 	const { settingsManager, modelRuntime, resourceLoader } = services;
 	// 设置终端能力覆盖
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
-	// 再次应用最新的 HTTP 代理设置
-	//applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
-
-	// --help：输出帮助信息并退出
-	// if (parsed.help) {
-	// 	reportDiagnostics(startupSettingsDiagnostics);
-	// 	const extensionFlags = resourceLoader
-	// 		.getExtensions()
-	// 		.extensions.flatMap((extension) => Array.from(extension.flags.values()));
-	// 	printHelp(extensionFlags);
-	// 	process.exit(0);
-	// }
-
-	// --list-models：列出可用模型并退出
-	// if (parsed.listModels !== undefined) {
-	// 	reportDiagnostics(startupSettingsDiagnostics);
-	// 	const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
-	// 	await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000));
-	// 	process.exit(0);
-	// }
 
 	// 读取管道输入的 stdin 内容（RPC 模式除外）
 	let stdinContent: string | undefined;
 	if (appMode !== "rpc") {
 		stdinContent = await readPipedStdin();
-		// 如果有 stdin 内容且在交互模式下，自动切换到打印模式
-		// if (stdinContent !== undefined && appMode === "interactive") {
-		// 	appMode = "print";
-		// }
 	}
 
 
@@ -914,101 +794,25 @@ export async function main(args: string[], options?: MainOptions) {
 		stdinContent,
 	);
 
-	// 初始化主题验证器
-	//setThemeJsonValidator(validateThemeJson);
-	// 初始化主题
-	//initTheme(settingsManager.getTheme(), appMode === "interactive");
-
-
-	
 	// 汇总并去重所有诊断信息
 	const startupDiagnostics = deduplicateDiagnostics([...startupSettingsDiagnostics, ...runtime.diagnostics]);
-	const hasRuntimeErrors = runtime.diagnostics.some((diagnostic) => diagnostic.type === "error");
-	// 非交互模式或有错误时输出诊断
-	if (appMode !== "interactive" || hasRuntimeErrors) {
-		reportDiagnostics(startupDiagnostics);
-	}
-	// 有致命错误时退出
-	if (hasRuntimeErrors) {
-		if (runtime.diagnostics.some((diagnostic) => diagnostic.message.includes("Failed to load extension"))) {
-			console.error(chalk.yellow(EXTENSION_LOAD_FAILURE_HINT));
-		}
-		process.exit(1);
-	}
-	time("createAgentSession");
-
-	// 非交互模式下若无可用模型则报错退出
-	if (appMode !== "interactive" && !session.model) {
-		console.error(chalk.red(formatNoModelsAvailableMessage()));
-		process.exit(1);
-	}
 
 	// 检查启动性能分析标志
 	const startupBenchmark = isTruthyEnvFlag(process.env.PI_STARTUP_BENCHMARK);
-	if (startupBenchmark && appMode !== "interactive") {
-		console.error(chalk.red("Error: PI_STARTUP_BENCHMARK only supports interactive mode"));
-		process.exit(1);
-	}
-
-	// RPC 模式下在后台刷新模型目录
-	if ( appMode === "rpc") {
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 15_000);
-		void modelRuntime
-			.refresh({ signal: controller.signal })
-			.catch(() => {})
-			.finally(() => clearTimeout(timeout));
-	}
 
 	// 根据运行模式分发到对应处理器
-	if (appMode === "rpc") {
-		printTimings();
-		await runRpcMode(runtime);
-	} else if (appMode === "interactive") {
-		const interactiveMode = new InteractiveMode(runtime, {
-			startupDiagnostics,
-			modelFallbackMessage,
-			initialMessage,
-			initialImages,
-			initialMessages: parsed.messages,
-			verbose: parsed.verbose,
-			tuiMode: parsed.tuiMode,
-			initialThemeSetting: parsed.useTheme,
-		});
-		// 性能分析模式：仅初始化后退出并输出耗时
-		if (startupBenchmark) {
-			await interactiveMode.init();
-			time("interactiveMode.init");
-			// 等待 TUI 终端查询响应被消费
-			await new Promise((resolve) => setTimeout(resolve, 150));
-			interactiveMode.stop();
-			stopThemeWatcher();
-			printTimings();
-			if (process.stdout.writableLength > 0) {
-				await new Promise<void>((resolve) => process.stdout.once("drain", resolve));
-			}
-			if (process.stderr.writableLength > 0) {
-				await new Promise<void>((resolve) => process.stderr.once("drain", resolve));
-			}
-			return;
-		}
+	
+	const interactiveMode = new InteractiveMode(runtime, {
+		startupDiagnostics,
+		modelFallbackMessage,
+		initialMessage,
+		initialImages,
+		initialMessages: parsed.messages,
+		verbose: parsed.verbose,
+		tuiMode: parsed.tuiMode,
+		initialThemeSetting: parsed.useTheme,
+	});
 
-		printTimings();
-		await interactiveMode.run();
-	} else {
-		printTimings();
-		// 打印/JSON 模式：发送消息并输出结果
-		const exitCode = await runPrintMode(runtime, {
-			mode: toPrintOutputMode(appMode),
-			messages: parsed.messages,
-			initialMessage,
-			initialImages,
-		});
-		stopThemeWatcher();
-		restoreStdout();
-		if (exitCode !== 0) {
-			process.exitCode = exitCode;
-		}
-		return;
-	}
+	printTimings();
+	await interactiveMode.run();
 }

@@ -386,9 +386,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 	async reload(options?: ResourceLoaderReloadOptions): Promise<void> {
 
-		if (this.loaded) {
-			clearExtensionCache();
-		}
+		// if (this.loaded) {
+		// 	clearExtensionCache();
+		// }
 
 		let preTrustExtensions: LoadExtensionsResult | undefined;
 		if (options?.resolveProjectTrust) {
@@ -431,16 +431,16 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const enabledSkills = enabledSkillResources.map((resource) => this.mapSkillPath(resource, metadataByPath));
 
 		// Add CLI paths metadata
-		for (const r of cliExtensionPaths.extensions) {
-			if (!metadataByPath.has(r.path)) {
-				metadataByPath.set(r.path, { source: "cli", scope: "temporary", origin: "top-level" });
-			}
-		}
-		for (const r of cliExtensionPaths.skills) {
-			if (!metadataByPath.has(r.path)) {
-				metadataByPath.set(r.path, { source: "cli", scope: "temporary", origin: "top-level" });
-			}
-		}
+		// for (const r of cliExtensionPaths.extensions) {
+		// 	if (!metadataByPath.has(r.path)) {
+		// 		metadataByPath.set(r.path, { source: "cli", scope: "temporary", origin: "top-level" });
+		// 	}
+		// }
+		// // for (const r of cliExtensionPaths.skills) {
+		// 	if (!metadataByPath.has(r.path)) {
+		// 		metadataByPath.set(r.path, { source: "cli", scope: "temporary", origin: "top-level" });
+		// 	}
+		// }
 
 		const cliEnabledExtensions = getEnabledPaths(cliExtensionPaths.extensions);
 		const cliEnabledSkills = getEnabledPaths(cliExtensionPaths.skills);
@@ -452,14 +452,14 @@ export class DefaultResourceLoader implements ResourceLoader {
 			: this.mergePaths(cliEnabledExtensions, enabledExtensions);
 
 		const extensionsResult = await this.loadFinalExtensionSet(extensionPaths, preTrustExtensions);
-		for (const p of this.additionalExtensionPaths) {
-			if (isLocalPath(p)) {
-				const resolved = this.resolveResourcePath(p);
-				if (!existsSync(resolved)) {
-					extensionsResult.errors.push({ path: resolved, error: `Extension path does not exist: ${resolved}` });
-				}
-			}
-		}
+		// for (const p of this.additionalExtensionPaths) {
+		// 	if (isLocalPath(p)) {
+		// 		const resolved = this.resolveResourcePath(p);
+		// 		if (!existsSync(resolved)) {
+		// 			extensionsResult.errors.push({ path: resolved, error: `Extension path does not exist: ${resolved}` });
+		// 		}
+		// 	}
+		// }
 		this.extensionsResult = this.extensionsOverride ? this.extensionsOverride(extensionsResult) : extensionsResult;
 		this.applyExtensionSourceInfo(this.extensionsResult.extensions, metadataByPath);
 
@@ -469,14 +469,14 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 		this.lastSkillPaths = skillPaths;
 		this.updateSkillsFromPaths(skillPaths, metadataByPath);
-		for (const p of this.additionalSkillPaths) {
-			if (isLocalPath(p)) {
-				const resolved = this.resolveResourcePath(p);
-				if (!existsSync(resolved) && !this.skillDiagnostics.some((d) => d.path === resolved)) {
-					this.skillDiagnostics.push({ type: "error", message: "Skill path does not exist", path: resolved });
-				}
-			}
-		}
+		// // for (const p of this.additionalSkillPaths) {
+		// 	if (isLocalPath(p)) {
+		// 		const resolved = this.resolveResourcePath(p);
+		// 		if (!existsSync(resolved) && !this.skillDiagnostics.some((d) => d.path === resolved)) {
+		// 			this.skillDiagnostics.push({ type: "error", message: "Skill path does not exist", path: resolved });
+		// 		}
+		// 	}
+		// }
 
 		const promptPaths = this.noPromptTemplates
 			? this.mergePaths(cliEnabledPrompts, this.additionalPromptTemplatePaths)
@@ -503,12 +503,12 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 		this.lastThemePaths = themePaths;
 		this.updateThemesFromPaths(themePaths, metadataByPath);
-		for (const p of this.additionalThemePaths) {
-			const resolved = this.resolveResourcePath(p);
-			if (!existsSync(resolved) && !this.themeDiagnostics.some((d) => d.path === resolved)) {
-				this.themeDiagnostics.push({ type: "error", message: "Theme path does not exist", path: resolved });
-			}
-		}
+		// for (const p of this.additionalThemePaths) {
+		// 	const resolved = this.resolveResourcePath(p);
+		// 	if (!existsSync(resolved) && !this.themeDiagnostics.some((d) => d.path === resolved)) {
+		// 		this.themeDiagnostics.push({ type: "error", message: "Theme path does not exist", path: resolved });
+		// 	}
+		// }
 
 		const agentsFiles = {
 			agentsFiles: this.noContextFiles
@@ -524,14 +524,13 @@ export class DefaultResourceLoader implements ResourceLoader {
 		const systemPromptSource = this.systemPromptSource ?? this.discoverSystemPromptFile();
 		const baseSystemPrompt = resolvePromptInput(systemPromptSource, "system prompt");
 		this.systemPrompt = this.systemPromptOverride ? this.systemPromptOverride(baseSystemPrompt) : baseSystemPrompt;
-		this.systemPromptSourcePath =
-			systemPromptSource && existsSync(systemPromptSource) ? resolvePath(systemPromptSource) : undefined;
+		this.systemPromptSourcePath = undefined;
 
 		let appendSources = this.appendSystemPromptSource;
-		if (!appendSources) {
-			const discoveredAppendSystemPromptFile = this.discoverAppendSystemPromptFile();
-			appendSources = discoveredAppendSystemPromptFile ? [discoveredAppendSystemPromptFile] : [];
-		}
+		
+		const discoveredAppendSystemPromptFile = this.discoverAppendSystemPromptFile();
+		appendSources = discoveredAppendSystemPromptFile ? [discoveredAppendSystemPromptFile] : [];
+	
 		const baseAppend = appendSources
 			.map((s) => resolvePromptInput(s, "append system prompt"))
 			.filter((s): s is string => s !== undefined);
