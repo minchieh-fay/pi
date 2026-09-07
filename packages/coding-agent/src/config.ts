@@ -416,21 +416,6 @@ export function getThemesDir(): string {
 	return join(packageDir, srcOrDist, "modes", "interactive", "theme");
 }
 
-/**
- * Get path to HTML export template directory (shipped with package)
- * - For Bun binary: export-html/ next to executable
- * - For Node.js (dist/): dist/core/export-html/
- * - For tsx (src/): src/core/export-html/
- */
-export function getExportTemplateDir(): string {
-	if (isBunBinary) {
-		return join(getPackageDir(), "export-html");
-	}
-	const packageDir = getPackageDir();
-	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
-	return join(packageDir, srcOrDist, "core", "export-html");
-}
-
 /** Get path to package.json */
 export function getPackageJsonPath(): string {
 	return join(getPackageDir(), "package.json");
@@ -510,14 +495,6 @@ export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_D
 
 export function expandTildePath(path: string): string {
 	return normalizePath(path);
-}
-
-const DEFAULT_SHARE_VIEWER_URL = "https://pi.dev/session/";
-
-/** Get the share viewer URL for a gist ID. */
-export function getShareViewerUrl(gistId: string): string {
-	const baseUrl = process.env.PI_SHARE_VIEWER_URL || DEFAULT_SHARE_VIEWER_URL;
-	return `${baseUrl}#${gistId}`;
 }
 
 // =============================================================================
