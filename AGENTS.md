@@ -37,3 +37,4 @@ let appMode = "interactive";
 
 # 记忆
 将你已经优化(删除代码)过的文件 写入 `youhua.md`
+单次操作5-20个文件
