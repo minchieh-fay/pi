@@ -1,6 +1,6 @@
 // Core session management
 
-export { type Args } from "./cli/args.ts";
+export type { Args } from "./cli/args.ts";
 
 // Config paths
 export {
@@ -349,19 +349,6 @@ export { type MainOptions, main } from "./main.ts";
 export {
 	InteractiveMode,
 	type InteractiveModeOptions,
-	type JsonAgentSessionEvent,
-	type ModelInfo,
-	type PrintModeOptions,
-	RpcClient,
-	type RpcClientOptions,
-	type RpcCommand,
-	type RpcEventListener,
-	type RpcExtensionUIRequest,
-	type RpcExtensionUIResponse,
-	type RpcResponse,
-	type RpcSessionState,
-	runPrintMode,
-	runRpcMode,
 } from "./modes/index.ts";
 // UI components for extensions
 export {
