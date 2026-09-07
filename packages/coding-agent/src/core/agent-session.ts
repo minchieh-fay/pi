@@ -1158,27 +1158,21 @@ export class AgentSession {
 	 */
 	async prompt(text: string, options?: PromptOptions): Promise<void> {
 		// 这是 coding-agent 对外的 prompt 入口，负责把原始文本整理成用户消息。
-		const expandPromptTemplates = options?.expandPromptTemplates ?? true;
-		const preflightResult = options?.preflightResult;
-		let messages: AgentMessage[] | undefined;
+		const expandPromptTemplates = true;
+		const preflightResult = undefined
+		let messages: undefined;//undefined
 
 		try {
-			// 扩展命令由扩展自己处理，不会进入普通 LLM prompt。
-			// Extension commands manage their own LLM interaction via pi.sendMessage()
-			if (expandPromptTemplates && text.startsWith("/")) {
-				const handled = await this._tryExecuteExtensionCommand(text);
-				if (handled) {
-					// Extension command executed, no prompt to send
-					preflightResult?.(true);
-					return;
-				}
-			}
-
-			if (this._compactionAbortController !== undefined) {
-				throw new Error(
-					"Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
-				);
-			}
+			// // 扩展命令由扩展自己处理，不会进入普通 LLM prompt。
+			// // Extension commands manage their own LLM interaction via pi.sendMessage()
+			// if (expandPromptTemplates && text.startsWith("/")) {
+			// 	const handled = await this._tryExecuteExtensionCommand(text);
+			// 	if (handled) {
+			// 		// Extension command executed, no prompt to send
+			// 		preflightResult?.(true);
+			// 		return;
+			// 	}
+			// }
 
 			// 允许扩展在 skill 和模板展开前拦截或修改用户输入。
 			let currentText = text;
@@ -1205,46 +1199,6 @@ export class AgentSession {
 			if (expandPromptTemplates) {
 				expandedText = this._expandSkillCommand(expandedText);
 				expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
-			}
-
-			// 当前已有 LLM 请求时，把新输入放入 steering 或 follow-up 队列。
-			if (this.isStreaming) {
-				if (!options?.streamingBehavior) {
-					throw new Error(
-						"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
-					);
-				}
-				if (options.streamingBehavior === "followUp") {
-					await this._queueFollowUp(expandedText, currentImages);
-				} else {
-					await this._queueSteer(expandedText, currentImages);
-				}
-				preflightResult?.(true);
-				return;
-			}
-
-			// Flush any pending bash and custom messages before the new prompt
-			this._flushPendingBashMessages();
-			this._flushPendingCustomMessages();
-
-			// Validate model
-			if (!this.model) {
-				throw new Error(formatNoModelSelectedMessage());
-			}
-
-			const hasConfiguredAuth =
-				this._modelRuntime.hasConfiguredAuth(this.model.provider) ||
-				(await this._modelRuntime.checkAuth(this.model.provider)) !== undefined;
-			if (!hasConfiguredAuth) {
-				const isOAuth = this._modelRuntime.isUsingOAuth(this.model.provider);
-				if (isOAuth) {
-					throw new Error(
-						`Authentication failed for "${this.model.provider}". ` +
-							`Credentials may have expired or network is unavailable. ` +
-							`Run '/login ${this.model.provider}' to re-authenticate.`,
-					);
-				}
-				throw new Error(formatNoApiKeyFoundMessage(this.model.provider));
 			}
 
 			// Check if we need to compact before sending (catches aborted responses).
