@@ -28,8 +28,6 @@ import {
 	type Component,
 	Container,
 	fuzzyFilter,
-	getCapabilities,
-	hyperlink,
 	Markdown,
 	matchesKey,
 	Spacer,
@@ -109,9 +107,7 @@ import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { loadAllHighlightLanguages } from "../../utils/syntax-highlight.ts";
 import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
-import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
 import { createChatViewport } from "./chat-viewport.ts";
-import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
 import { BranchSummaryMessageComponent } from "./components/branch-summary-message.ts";
@@ -119,9 +115,7 @@ import { CompactionSummaryMessageComponent } from "./components/compaction-summa
 import { CustomEditor } from "./components/custom-editor.ts";
 import { CustomEntryComponent } from "./components/custom-entry.ts";
 import { CustomMessageComponent } from "./components/custom-message.ts";
-import { DaxnutsComponent } from "./components/daxnuts.ts";
 import { DynamicBorder } from "./components/dynamic-border.ts";
-import { EarendilAnnouncementComponent } from "./components/earendil-announcement.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
@@ -154,7 +148,6 @@ import { TrustSelectorComponent } from "./components/trust-selector.ts";
 import { UserMessageComponent } from "./components/user-message.ts";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.ts";
 import { editInExternalEditor } from "./external-editor.ts";
-import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getModelSearchText } from "./model-search.ts";
 import {
 	getAvailableThemes,
@@ -1032,22 +1025,6 @@ export class InteractiveMode {
 	 */
 	async run(): Promise<void> {
 		await this.init();
-
-		if (!process.env.PI_OFFLINE) {
-			const controller = new AbortController();
-			const timeout = setTimeout(() => controller.abort(), 15_000);
-			void refreshModelCatalogs(this.session.modelRuntime, controller.signal)
-				.then(() => this.updateAvailableProviderCount())
-				.catch(() => {})
-				.finally(() => clearTimeout(timeout));
-		}
-
-		// Start version check asynchronously
-		checkForNewPiVersion(this.version).then((newRelease) => {
-			if (newRelease) {
-				this.showNewVersionNotification(newRelease);
-			}
-		});
 
 		// Start package update check asynchronously
 		this.checkForPackageUpdates()
@@ -3069,16 +3046,6 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/arminsayshi") {
-				this.handleArminSaysHi();
-				this.editor.setText("");
-				return;
-			}
-			if (text === "/dementedelves") {
-				this.handleDementedDelves();
-				this.editor.setText("");
-				return;
-			}
 			if (text === "/resume") {
 				this.showSessionSelector();
 				this.editor.setText("");
@@ -4272,35 +4239,6 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	showNewVersionNotification(release: LatestPiRelease): void {
-		const action = theme.fg("accent", `${APP_NAME} update`);
-		const updateInstruction = theme.fg("muted", `New version ${release.version} is available. Run `) + action;
-		const changelogUrl = "https://pi.dev/changelog";
-		const changelogLink = getCapabilities().hyperlinks
-			? hyperlink(theme.fg("accent", changelogUrl), changelogUrl)
-			: theme.fg("accent", changelogUrl);
-		const changelogLine = theme.fg("muted", "Changelog: ") + changelogLink;
-		const note = release.note?.trim();
-
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-		this.chatContainer.addChild(
-			new Text(`${theme.bold(theme.fg("warning", "Update Available"))}\n${updateInstruction}`, 1, 0),
-		);
-		if (note) {
-			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(
-				new Markdown(note, 1, 0, this.getMarkdownThemeWithSettings(), {
-					color: (text) => theme.fg("muted", text),
-				}),
-			);
-			this.chatContainer.addChild(new Spacer(1));
-		}
-		this.chatContainer.addChild(new Text(changelogLine, 1, 0));
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-		this.ui.requestRender();
-	}
-
 	showPackageUpdateNotification(packages: string[]): void {
 		const action = theme.fg("accent", `${APP_NAME} update --extensions`);
 		const updateInstruction = theme.fg("muted", "Package updates are available. Run ") + action;
@@ -4838,7 +4776,6 @@ export class InteractiveMode {
 				this.updateEditorBorderColor();
 				this.showStatus(`Model: ${model.id}`);
 				void this.maybeWarnAboutAnthropicSubscriptionAuth(model);
-				this.checkDaxnutsEasterEgg(model);
 			} catch (error) {
 				this.showError(error instanceof Error ? error.message : String(error));
 			}
@@ -4856,29 +4793,6 @@ export class InteractiveMode {
 		const cachedMatch = findExactModelReferenceMatch(searchTerm, cachedModels);
 		if (cachedMatch || this.session.scopedModels.length > 0) return cachedMatch;
 
-		this.showStatus("Refreshing model catalogs…");
-		const controller = new AbortController();
-		let timedOut = false;
-		const timeout = setTimeout(() => {
-			timedOut = true;
-			controller.abort();
-		}, 15_000);
-		try {
-			const result = await refreshModelCatalogs(this.session.modelRuntime, controller.signal);
-			if (result.aborted && timedOut) {
-				this.showWarning("Model refresh timed out; searching cached models.");
-			} else if (result.errors.size > 0) {
-				this.showWarning(`Could not refresh ${[...result.errors.keys()].join(", ")}; searching cached models.`);
-			}
-		} catch (error) {
-			this.showWarning(
-				timedOut
-					? "Model refresh timed out; searching cached models."
-					: `Could not refresh model catalogs: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		} finally {
-			clearTimeout(timeout);
-		}
 		return findExactModelReferenceMatch(searchTerm, [...this.session.modelRuntime.getAvailableSnapshot()]);
 	}
 
@@ -4984,7 +4898,6 @@ export class InteractiveMode {
 					done();
 					this.showStatus(persist ? `Default model: ${model.provider}/${model.id}` : `Model: ${model.id}`);
 					void this.maybeWarnAboutAnthropicSubscriptionAuth(model);
-					this.checkDaxnutsEasterEgg(model);
 				} catch (error) {
 					done();
 					this.showError(error instanceof Error ? error.message : String(error));
@@ -5011,8 +4924,8 @@ export class InteractiveMode {
 	}
 
 	private showModelsSelector(): void {
-		let availableModels = [...this.session.modelRuntime.getAvailableSnapshot()];
-		let availableModelIds = new Set(availableModels.map((model) => `${model.provider}/${model.id}`));
+		const availableModels = [...this.session.modelRuntime.getAvailableSnapshot()];
+		const availableModelIds = new Set(availableModels.map((model) => `${model.provider}/${model.id}`));
 		const configuredPatterns = this.settingsManager.getEnabledModels();
 		const sessionScopedModels = this.session.scopedModels;
 		const configuredEnabledIds = (models: readonly Model<any>[]): string[] | null => {
@@ -5029,8 +4942,6 @@ export class InteractiveMode {
 			sessionScopedModels.length > 0
 				? sessionScopedModels.map((scoped) => `${scoped.model.provider}/${scoped.model.id}`)
 				: configuredEnabledIds(availableModels);
-		let selectionChanged = false;
-
 		const updateSessionModels = (enabledIds: string[] | null): void => {
 			currentEnabledIds = enabledIds === null ? null : [...enabledIds];
 			const hasEnabledAvailableModel = enabledIds?.some((id) => availableModelIds.has(id)) ?? false;
@@ -5052,23 +4963,14 @@ export class InteractiveMode {
 		};
 
 		this.showSelector((done) => {
-			let disposed = false;
-			let timedOut = false;
-			const controller = new AbortController();
-			const timeout = setTimeout(() => {
-				timedOut = true;
-				controller.abort();
-			}, 15_000);
 			const selector = new ScopedModelsSelectorComponent(
 				{
 					allModels: availableModels,
 					enabledModelIds: currentEnabledIds,
-					refreshStatus: "Refreshing model catalogs…",
 				},
 				{
 					onChange: (enabledIds) => {
-						selectionChanged = true;
-						updateSessionModels(enabledIds);
+					updateSessionModels(enabledIds);
 					},
 					onPersist: (enabledIds) => {
 						const allEnabled =
@@ -5085,49 +4987,10 @@ export class InteractiveMode {
 					},
 				},
 			);
-			void refreshModelCatalogs(this.session.modelRuntime, controller.signal)
-				.then((result) => {
-					if (disposed) return;
-					availableModels = [...this.session.modelRuntime.getAvailableSnapshot()];
-					availableModelIds = new Set(availableModels.map((model) => `${model.provider}/${model.id}`));
-					if (!selectionChanged && sessionScopedModels.length === 0) {
-						currentEnabledIds = configuredEnabledIds(availableModels);
-						selector.updateModels(availableModels, currentEnabledIds);
-					} else {
-						selector.updateModels(availableModels);
-					}
-					if (currentEnabledIds !== null) updateSessionModels(currentEnabledIds);
-					if (result.aborted && timedOut) {
-						selector.setRefreshStatus("Model refresh timed out; showing cached models.", "warning");
-					} else if (result.errors.size > 0) {
-						selector.setRefreshStatus(
-							`Could not refresh ${[...result.errors.keys()].join(", ")}; showing cached models.`,
-							"warning",
-						);
-					} else {
-						selector.setRefreshStatus("Model catalogs refreshed.", "success");
-					}
-					this.ui.requestRender();
-				})
-				.catch((error: unknown) => {
-					if (disposed) return;
-					selector.setRefreshStatus(
-						timedOut
-							? "Model refresh timed out; showing cached models."
-							: `Could not refresh model catalogs: ${error instanceof Error ? error.message : String(error)}`,
-						"warning",
-					);
-					this.ui.requestRender();
-				})
-				.finally(() => clearTimeout(timeout));
 			return {
 				component: selector,
 				focus: selector,
-				dispose: () => {
-					disposed = true;
-					clearTimeout(timeout);
-					controller.abort();
-				},
+				dispose: () => selector.dispose(),
 			};
 		});
 	}
@@ -5700,7 +5563,6 @@ export class InteractiveMode {
 		if (selectedModel) {
 			this.showStatus(`${actionLabel}. Selected ${selectedModel.id}. Credentials saved to ${getAuthPath()}`);
 			void this.maybeWarnAboutAnthropicSubscriptionAuth(selectedModel);
-			this.checkDaxnutsEasterEgg(selectedModel);
 		} else {
 			this.showStatus(`${actionLabel}. Credentials saved to ${getAuthPath()}`);
 			if (selectionError) {
@@ -6407,29 +6269,6 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	private handleArminSaysHi(): void {
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new ArminComponent(this.ui));
-		this.ui.requestRender();
-	}
-
-	private handleDementedDelves(): void {
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new EarendilAnnouncementComponent());
-		this.ui.requestRender();
-	}
-
-	private handleDaxnuts(): void {
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DaxnutsComponent(this.ui));
-		this.ui.requestRender();
-	}
-
-	private checkDaxnutsEasterEgg(model: { provider: string; id: string }): void {
-		if (model.provider === "opencode" && model.id.toLowerCase().includes("kimi-k2.5")) {
-			this.handleDaxnuts();
-		}
-	}
 
 	private async handleBashCommand(command: string, excludeFromContext = false): Promise<void> {
 		const extensionRunner = this.session.extensionRunner;

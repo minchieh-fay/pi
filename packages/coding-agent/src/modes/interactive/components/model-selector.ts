@@ -11,7 +11,6 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
-import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../theme/theme.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
@@ -62,17 +61,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private onSelectAsDefaultCallback?: (model: Model<any>) => void;
 	private onCancelCallback: () => void;
 	private errorMessage?: string;
-	private refreshStatusMessage = "Refreshing model catalogs…";
-	private refreshStatusSuccess = false;
 	private tui: TUI;
 	private scopedModels: ReadonlyArray<ScopedModelItem>;
 	private defaultModel?: DefaultModelReference;
 	private scope: ModelScope = "all";
 	private scopeText?: Text;
 	private scopeHintText?: Text;
-	private readonly refreshAbortController = new AbortController();
-	private refreshTimeout?: ReturnType<typeof setTimeout>;
-	private closed = false;
 
 	constructor(
 		tui: TUI,
@@ -149,7 +143,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		if (initialSearchInput) this.filterModels(initialSearchInput);
 		else this.updateList();
 		this.tui.requestRender();
-		void this.refreshModels();
 	}
 
 	private loadModelsFromSnapshot(): void {
@@ -175,51 +168,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			currentIndex >= 0 ? currentIndex : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
 	}
 
-	private async refreshModels(): Promise<void> {
-		const timeoutMs = 15_000;
-		let timedOut = false;
-		this.refreshTimeout = setTimeout(() => {
-			timedOut = true;
-			this.refreshAbortController.abort();
-		}, timeoutMs);
-		try {
-			const result = await refreshModelCatalogs(this.modelRuntime, this.refreshAbortController.signal);
-			if (this.closed) return;
-			this.refreshStatusMessage = "";
-			if (result.aborted && timedOut) {
-				this.errorMessage = "Model refresh timed out; showing cached models.";
-			} else if (result.errors.size === 1) {
-				this.errorMessage = `Could not refresh ${result.errors.keys().next().value}; showing cached models.`;
-			} else if (result.errors.size > 1) {
-				this.errorMessage = `Could not refresh ${result.errors.size} model catalogs (${[...result.errors.keys()].join(", ")}); showing cached models.`;
-			} else {
-				this.errorMessage = this.modelRuntime.getError();
-				if (!this.errorMessage) {
-					this.refreshStatusMessage = "Model catalogs refreshed.";
-					this.refreshStatusSuccess = true;
-				}
-			}
-			this.loadModelsFromSnapshot();
-			this.filterModels(this.searchInput.getValue());
-			this.tui.requestRender();
-		} catch (error) {
-			if (this.closed) return;
-			this.refreshStatusMessage = "";
-			this.errorMessage = timedOut
-				? "Model refresh timed out; showing cached models."
-				: `Could not refresh model catalogs: ${error instanceof Error ? error.message : String(error)}`;
-			this.updateList();
-			this.tui.requestRender();
-		} finally {
-			if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
-		}
-	}
-
 	dispose(): void {
-		if (this.closed) return;
-		this.closed = true;
-		if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
-		this.refreshAbortController.abort();
 	}
 
 	private sortModels(models: ModelItem[]): ModelItem[] {
@@ -344,12 +293,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const selected = this.filteredModels[this.selectedIndex];
 			this.listContainer.addChild(new Spacer(1));
 			this.listContainer.addChild(new Text(theme.fg("muted", `  Model Name: ${selected.model.name}`), 0, 0));
-		}
-		if (this.refreshStatusMessage) {
-			this.listContainer.addChild(new Spacer(1));
-			this.listContainer.addChild(
-				new Text(theme.fg(this.refreshStatusSuccess ? "success" : "muted", `  ${this.refreshStatusMessage}`), 0, 0),
-			);
 		}
 	}
 
