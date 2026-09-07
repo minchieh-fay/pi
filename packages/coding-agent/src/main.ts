@@ -223,7 +223,6 @@ export async function main(_args: string[], options?: MainOptions) {
 		sessionStartEvent,
 		projectTrustContext,
 	}) => {
-		const projectTrustDiagnostics: AgentSessionRuntimeDiagnostic[] = [];
 		// 确定项目是否可信
 		const projectTrusted = false;
 		// 创建当前 cwd 的 settingsManager
@@ -240,18 +239,15 @@ export async function main(_args: string[], options?: MainOptions) {
 					await resolveProjectTrusted({
 						cwd,
 						trustStore,
-						trustOverride: parsed.projectTrustOverride,
 						defaultProjectTrust: "ask",
 						extensionsResult,
 						projectTrustContext:
 							projectTrustContext ??
 							createProjectTrustContext({
 								cwd,
-								mode: "interactive",
 								settingsManager: startupSettingsManager,
 								hasUI: true,
 							}),
-						onExtensionError: (message) => projectTrustDiagnostics.push({ type: "warning", message }),
 					});
 					return true;
 				},
@@ -270,7 +266,6 @@ export async function main(_args: string[], options?: MainOptions) {
 		const { settingsManager, modelRuntime, resourceLoader } = services;
 		// 收集所有诊断信息：项目信任、服务、设置、扩展加载错误
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
-			...projectTrustDiagnostics,
 			...services.diagnostics,
 			...collectSettingsDiagnostics(settingsManager),
 			...resourceLoader.getExtensions().errors.map(({ path, error }) => ({

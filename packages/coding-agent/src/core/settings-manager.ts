@@ -337,38 +337,31 @@ export class SettingsManager {
 	static create(
 		cwd: string,
 		agentDir: string = getAgentDir(),
-		options: SettingsManagerCreateOptions = {},
+		_options: SettingsManagerCreateOptions = {},
 	): SettingsManager {
 		const resolvedCwd = resolvePath(cwd);
 		const resolvedAgentDir = resolvePath(agentDir);
 		const storage = new FileSettingsStorage(resolvedCwd, resolvedAgentDir);
-		return SettingsManager.fromStorageWithPaths(storage, options, {
+		return SettingsManager.fromStorageWithPaths(storage, {
 			global: join(resolvedAgentDir, "settings.json"),
 			project: join(resolvedCwd, CONFIG_DIR_NAME, "settings.json"),
 		});
 	}
 
 	/** Create a SettingsManager from an arbitrary storage backend */
-	static fromStorage(storage: SettingsStorage, options: SettingsManagerCreateOptions = {}): SettingsManager {
-		return SettingsManager.fromStorageWithPaths(storage, options);
+	static fromStorage(storage: SettingsStorage, _options: SettingsManagerCreateOptions = {}): SettingsManager {
+		return SettingsManager.fromStorageWithPaths(storage);
 	}
 
 	/** Create a manager while retaining optional file paths for reported storage errors. */
 	private static fromStorageWithPaths(
 		storage: SettingsStorage,
-		options: SettingsManagerCreateOptions,
 		settingsPaths: SettingsPaths = {},
 	): SettingsManager {
 		const projectTrusted = false;
 		const globalLoad = SettingsManager.tryLoadFromStorage(storage, "global");
 		const projectLoad = SettingsManager.tryLoadFromStorage(storage, "project", projectTrusted);
 		const initialErrors: SettingsError[] = [];
-		// if (globalLoad.error) {
-		// 	initialErrors.push(toSettingsError("global", globalLoad.error, settingsPaths.global));
-		// }
-		// if (projectLoad.error) {
-		// 	initialErrors.push(toSettingsError("project", projectLoad.error, settingsPaths.project));
-		// }
 
 		return new SettingsManager(
 			storage,

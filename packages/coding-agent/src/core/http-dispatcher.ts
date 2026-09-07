@@ -1,9 +1,4 @@
-import { EventEmitter } from "node:events";
-import * as undici from "undici";
-
 export const DEFAULT_HTTP_IDLE_TIMEOUT_MS = 300_000;
-// Node's 250ms default can terminate valid connection attempts on high-latency routes.
-const DEFAULT_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS = 2_000;
 
 export const HTTP_IDLE_TIMEOUT_CHOICES = [
 	{ label: "30 sec", timeoutMs: 30_000 },
@@ -12,9 +7,6 @@ export const HTTP_IDLE_TIMEOUT_CHOICES = [
 	{ label: "5 min", timeoutMs: 300_000 },
 	{ label: "disabled", timeoutMs: 0 },
 ] as const;
-
-const originalGlobalFetch = globalThis.fetch;
-let installedGlobalFetch: typeof globalThis.fetch | undefined;
 
 export function parseHttpIdleTimeoutMs(value: unknown): number | undefined {
 	if (typeof value === "string") {
@@ -40,42 +32,6 @@ export function formatHttpIdleTimeoutMs(timeoutMs: number): string {
 		return choice.label;
 	}
 	return `${timeoutMs / 1000} sec`;
-}
-
-export function applyHttpProxySettings(httpProxy: string | undefined): void {
-	const proxy = httpProxy?.trim();
-	if (!proxy) return;
-	process.env.HTTP_PROXY ??= proxy;
-	process.env.HTTPS_PROXY ??= proxy;
-}
-
-const ignoreUndiciDispatcherError = (_error: unknown): void => {};
-
-// Undici can emit an internal Client "error" while terminating a mid-stream
-// fetch body. The body stream still rejects through reader.read(); this listener
-// only prevents EventEmitter's unhandled "error" special case from crashing pi.
-function withUndiciErrorListener<T extends undici.Dispatcher>(dispatcher: T): T {
-	if (dispatcher instanceof EventEmitter) {
-		EventEmitter.prototype.on.call(dispatcher, "error", ignoreUndiciDispatcherError);
-	}
-	return dispatcher;
-}
-
-function createUndiciClient(origin: string | URL, options: object): undici.Dispatcher {
-	return withUndiciErrorListener(new undici.Client(origin, options as undici.Client.Options));
-}
-
-function createUndiciOriginDispatcher(origin: string | URL, options: object): undici.Dispatcher {
-	const dispatcherOptions = options as undici.Pool.Options;
-	if (dispatcherOptions.connections === 1) {
-		return createUndiciClient(origin, dispatcherOptions);
-	}
-	return withUndiciErrorListener(
-		new undici.Pool(origin, {
-			...dispatcherOptions,
-			factory: createUndiciClient,
-		}),
-	);
 }
 
 
