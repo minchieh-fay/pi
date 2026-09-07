@@ -1122,12 +1122,12 @@ export class SettingsManager {
 	}
 
 	getTerminalCapabilityOverrides(): Partial<TerminalCapabilities> {
-		const terminal = this.settings.terminal;
-		const images = terminal?.images;
+		const terminal = undefined;
+		const images = undefined;
 		return {
-			...(images === "kitty" || images === "iterm2" ? { images } : images === false ? { images: null } : {}),
-			...(typeof terminal?.trueColor === "boolean" ? { trueColor: terminal.trueColor } : {}),
-			...(typeof terminal?.hyperlinks === "boolean" ? { hyperlinks: terminal.hyperlinks } : {}),
+			...({}),
+			...({}),
+			...({}),
 		};
 	}
 

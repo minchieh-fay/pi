@@ -224,9 +224,9 @@ export async function main(_args: string[], options?: MainOptions) {
 		projectTrustContext,
 	}) => {
 		// 确定项目是否可信
-		const projectTrusted = false;
+		//const projectTrusted = false;
 		// 创建当前 cwd 的 settingsManager
-		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
+		const runtimeSettingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
 		// 创建 agent 运行时所需的服务
 		const services = await createAgentSessionServices({
 			cwd,
@@ -274,12 +274,6 @@ export async function main(_args: string[], options?: MainOptions) {
 			})),
 		];
 
-		// 解析可用模型范围
-		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();
-		const scopedModels =
-			modelPatterns && modelPatterns.length > 0
-				? await resolveModelScope(modelPatterns, modelRuntime, { signal: AbortSignal.timeout(15_000) })
-				: [];
 		// 构建会话选项
 		const {
 			options: sessionOptions,
@@ -287,7 +281,7 @@ export async function main(_args: string[], options?: MainOptions) {
 			diagnostics: sessionOptionDiagnostics,
 		} = buildSessionOptions(
 			parsed,
-			scopedModels,
+			[], //scopedModels,
 			sessionManager.buildSessionContext().messages.length > 0,
 			modelRuntime,
 			settingsManager,
@@ -295,16 +289,16 @@ export async function main(_args: string[], options?: MainOptions) {
 		diagnostics.push(...sessionOptionDiagnostics);
 
 		// 处理 --api-key 参数
-		if (parsed.apiKey) {
-			if (!sessionOptions.model) {
-				diagnostics.push({
-					type: "error",
-					message: "--api-key requires a model to be specified via --model, --provider/--model, or --models",
-				});
-			} else {
-				await modelRuntime.setRuntimeApiKey(sessionOptions.model.provider, parsed.apiKey);
-			}
-		}
+		// if (parsed.apiKey) {
+		// 	if (!sessionOptions.model) {
+		// 		diagnostics.push({
+		// 			type: "error",
+		// 			message: "--api-key requires a model to be specified via --model, --provider/--model, or --models",
+		// 		});
+		// 	} else {
+		// 		await modelRuntime.setRuntimeApiKey(sessionOptions.model.provider, parsed.apiKey);
+		// 	}
+		// }
 
 		// 创建 agent 会话
 		const created = await createAgentSessionFromServices({
@@ -319,11 +313,6 @@ export async function main(_args: string[], options?: MainOptions) {
 			noTools: sessionOptions.noTools,
 			customTools: sessionOptions.customTools,
 		});
-		// 如果通过 CLI 指定了 thinking 级别，则覆盖会话的默认值
-		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
-		if (created.session.model && cliThinkingOverride) {
-			created.session.setThinkingLevel(created.session.thinkingLevel);
-		}
 
 		return {
 			...created,
@@ -340,7 +329,7 @@ export async function main(_args: string[], options?: MainOptions) {
 	const { services, modelFallbackMessage } = runtime;
 	const { settingsManager } = services;
 	// 设置终端能力覆盖
-	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
+	//setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 
 	// 读取管道输入的 stdin 内容
 	const stdinContent = await readPipedStdin();
