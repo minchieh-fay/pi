@@ -24,6 +24,7 @@ packages/ai/src/providers/.model-generation-*/
 *.swo
 *~
 [0-9].txt
+youhua.md
 
 # Package specific
 .npm/
