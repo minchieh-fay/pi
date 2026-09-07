@@ -165,10 +165,8 @@ type ActiveRun = {
 };
 
 /**
- * Stateful wrapper around the low-level agent loop.
- *
- * `Agent` owns the current transcript, emits lifecycle events, executes tools,
- * and exposes queueing APIs for steering and follow-up messages.
+ * 对底层 agent loop 的有状态封装。
+ * Agent 保存 transcript、分发生命周期事件、执行工具，并提供 steering/follow-up 队列。
  */
 export class Agent {
 	private _state: MutableAgentState;
@@ -214,7 +212,7 @@ export class Agent {
 	public toolExecution: ToolExecutionMode;
 
 	constructor(options: AgentOptions) {
-		// Older compiled consumers may omit options or streamFn even though the current API requires them.
+		// 兼容旧调用方缺少 options 或 streamFn 的情况，缺省值由这里统一补齐。
 		const runtimeOptions: Partial<AgentOptions> = options ?? {};
 		this._state = createMutableAgentState(runtimeOptions.initialState);
 		this.convertToLlm = runtimeOptions.convertToLlm ?? defaultConvertToLlm;
@@ -344,7 +342,7 @@ export class Agent {
 		this.clearSteeringQueue();
 	}
 
-	/** Start a new prompt from text, a single message, or a batch of messages. */
+	/** 从文本、单条消息或消息数组启动一次新的 agent 请求。 */
 	async prompt(message: AgentMessage | AgentMessage[]): Promise<void>;
 	async prompt(input: string, images?: ImageContent[]): Promise<void>;
 	async prompt(input: string | AgentMessage | AgentMessage[], images?: ImageContent[]): Promise<void> {
@@ -360,7 +358,7 @@ export class Agent {
 		await this.runPromptMessages(messages);
 	}
 
-	/** Continue from the current transcript. The last message must be a user or tool-result message. */
+	/** 从当前 transcript 继续请求；最后一条消息必须是用户消息或工具结果。 */
 	async continue(): Promise<void> {
 		if (this.activeRun) {
 			throw new Error("Agent is already processing. Wait for completion before continuing.");
@@ -550,19 +548,23 @@ export class Agent {
 	private async processEvents(event: AgentEvent): Promise<void> {
 		switch (event.type) {
 			case "message_start":
+				// 记录刚开始生成或刚进入上下文的消息。
 				this._state.streamingMessage = event.message;
 				break;
 
 			case "message_update":
+				// 流式增量到达时，用最新 partial assistant 消息刷新状态。
 				this._state.streamingMessage = event.message;
 				break;
 
 			case "message_end":
+				// 消息生成完成后停止 streaming 标记，并永久加入 transcript。
 				this._state.streamingMessage = undefined;
 				this._state.messages.push(event.message);
 				break;
 
 			case "tool_execution_start": {
+				// 记录正在执行的工具，供 UI 判断当前是否仍有待完成工具。
 				const pendingToolCalls = new Set(this._state.pendingToolCalls);
 				pendingToolCalls.add(event.toolCallId);
 				this._state.pendingToolCalls = pendingToolCalls;
@@ -570,6 +572,7 @@ export class Agent {
 			}
 
 			case "tool_execution_end": {
+				// 工具完成后从待执行集合移除对应 ID。
 				const pendingToolCalls = new Set(this._state.pendingToolCalls);
 				pendingToolCalls.delete(event.toolCallId);
 				this._state.pendingToolCalls = pendingToolCalls;

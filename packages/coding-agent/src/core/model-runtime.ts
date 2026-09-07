@@ -583,10 +583,10 @@ export class ModelRuntime implements Models {
 		const providerOptions = rawProviderOptions as Omit<TOptions, "transformHeaders"> & ProviderRequestOptions;
 		let headers = mergeHeaders(resolution.auth.headers, providerOptions.headers);
 		if (transformHeaders) headers = await transformHeaders(headers ?? {});
-		const env =
-			resolution.env || providerOptions.env
-				? { ...(resolution.env ?? {}), ...(providerOptions.env ?? {}) }
-				: undefined;
+		const env = undefined ;
+			// resolution.env || providerOptions.env
+			// 	? { ...(resolution.env ?? {}), ...(providerOptions.env ?? {}) }
+			// 	: undefined;
 		return {
 			provider,
 			model: resolution.auth.baseUrl ? { ...model, baseUrl: resolution.auth.baseUrl } : model,

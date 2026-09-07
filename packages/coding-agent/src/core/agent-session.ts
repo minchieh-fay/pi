@@ -1158,60 +1158,22 @@ export class AgentSession {
 	 */
 	async prompt(text: string, options?: PromptOptions): Promise<void> {
 		// 这是 coding-agent 对外的 prompt 入口，负责把原始文本整理成用户消息。
-		const expandPromptTemplates = true;
-		const preflightResult = undefined
-		let messages: undefined;//undefined
+		//const expandPromptTemplates = true;
+		//const preflightResult = undefined
+		let messages: AgentMessage[] | undefined; //undefined
 
 		try {
-			// // 扩展命令由扩展自己处理，不会进入普通 LLM prompt。
-			// // Extension commands manage their own LLM interaction via pi.sendMessage()
-			// if (expandPromptTemplates && text.startsWith("/")) {
-			// 	const handled = await this._tryExecuteExtensionCommand(text);
-			// 	if (handled) {
-			// 		// Extension command executed, no prompt to send
-			// 		preflightResult?.(true);
-			// 		return;
-			// 	}
-			// }
-
 			// 允许扩展在 skill 和模板展开前拦截或修改用户输入。
-			let currentText = text;
+			//let currentText = text;
 			let currentImages = options?.images;
-			if (this._extensionRunner.hasHandlers("input")) {
-				const inputResult = await this._extensionRunner.emitInput(
-					currentText,
-					currentImages,
-					options?.source ?? "interactive",
-					this.isStreaming ? options?.streamingBehavior : undefined,
-				);
-				if (inputResult.action === "handled") {
-					preflightResult?.(true);
-					return;
-				}
-				if (inputResult.action === "transform") {
-					currentText = inputResult.text;
-					currentImages = inputResult.images ?? currentImages;
-				}
-			}
 
 			// 展开 skill 命令和基于文件的 prompt 模板。
-			let expandedText = currentText;
-			if (expandPromptTemplates) {
-				expandedText = this._expandSkillCommand(expandedText);
-				expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
-			}
-
-			// Check if we need to compact before sending (catches aborted responses).
-			// The user's new prompt is sent below, so do not call agent.continue() here.
-			const lastAssistant = this._findLastAssistantMessage();
-			if (lastAssistant) {
-				await this._checkCompaction(lastAssistant, false);
-			}
+			let expandedText = text;
 
 			// 构造本次发送给 agent 的消息数组，用户消息排在扩展消息之后。
 			messages = [];
 
-			// Add user message
+			// 创建本次真正发送给 agent 的用户消息，可同时附带图片。
 			const userContent: (TextContent | ImageContent)[] = [{ type: "text", text: expandedText }];
 			if (currentImages) {
 				userContent.push(...currentImages);
@@ -1222,44 +1184,17 @@ export class AgentSession {
 				timestamp: Date.now(),
 			});
 
-			// Inject any pending "nextTurn" messages as context alongside the user message
+			// 把等待中的 nextTurn 消息作为上下文追加到用户消息后面。
 			for (const msg of this._pendingNextTurnMessages) {
 				messages.push(msg);
 			}
 			this._pendingNextTurnMessages = [];
-
-			// 在启动 agent 前让扩展追加消息或修改本轮 system prompt。
-			const result = await this._extensionRunner.emitBeforeAgentStart(
-				expandedText,
-				currentImages,
-				this._baseSystemPrompt,
-				this._baseSystemPromptOptions,
-			);
-			// Add all custom messages from extensions
-			if (result?.messages) {
-				for (const msg of result.messages) {
-					messages.push({
-						role: "custom",
-						customType: msg.customType,
-						// Untyped extensions can pass null/missing content; normalize at ingestion.
-						content: msg.content ?? [],
-						display: msg.display,
-						details: msg.details,
-						timestamp: Date.now(),
-					});
-				}
-			}
-			// Apply extension-modified system prompt, or reset to base
-			if (result?.systemPrompt !== undefined) {
-				this._systemPromptOverride = result.systemPrompt;
-				this.agent.state.systemPrompt = result.systemPrompt;
-			} else {
-				// Ensure we're using the base prompt (in case previous turn had modifications)
+			{
+				// 清除上一轮的临时 system prompt 修改，保证本轮使用基础 prompt。
 				this._systemPromptOverride = undefined;
 				this.agent.state.systemPrompt = this._baseSystemPrompt;
 			}
 		} catch (error) {
-			preflightResult?.(false);
 			throw error;
 		}
 
@@ -1267,7 +1202,6 @@ export class AgentSession {
 			return;
 		}
 
-		preflightResult?.(true);
 		// 进入 agent 生命周期，后续由 agentLoop 发送消息并消费 LLM 返回。
 		await this._runAgentPrompt(messages);
 	}
@@ -1276,7 +1210,7 @@ export class AgentSession {
 	 * Try to execute an extension command. Returns true if command was found and executed.
 	 */
 	private async _tryExecuteExtensionCommand(text: string): Promise<boolean> {
-		// Parse command name and args
+		// 从输入文本中拆出扩展命令名和命令参数。
 		const spaceIndex = text.indexOf(" ");
 		const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
 		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
@@ -1284,14 +1218,14 @@ export class AgentSession {
 		const command = this._extensionRunner.getCommand(commandName);
 		if (!command) return false;
 
-		// Get command context from extension runner (includes session control methods)
+		// 从扩展运行器获取命令上下文，其中包含会话控制能力。
 		const ctx = this._extensionRunner.createCommandContext();
 
 		try {
 			await command.handler(args, ctx);
 			return true;
 		} catch (err) {
-			// Emit error via extension runner
+			// 扩展命令失败时，通过扩展运行器统一上报错误。
 			this._extensionRunner.emitError({
 				extensionPath: `command:${commandName}`,
 				event: "command",
@@ -1314,7 +1248,7 @@ export class AgentSession {
 		const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1).trim();
 
 		const skill = this.resourceLoader.getSkills().skills.find((s) => s.name === skillName);
-		if (!skill) return text; // Unknown skill, pass through
+		if (!skill) return text; // 未找到 skill 时保持原文本，继续作为普通 prompt。
 
 		try {
 			const content = readFileSync(skill.filePath, "utf-8");
@@ -1322,13 +1256,13 @@ export class AgentSession {
 			const skillBlock = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
 			return args ? `${skillBlock}\n\n${args}` : skillBlock;
 		} catch (err) {
-			// Emit error like extension commands do
+			// skill 文件读取失败时，按扩展命令失败的方式上报错误。
 			this._extensionRunner.emitError({
 				extensionPath: skill.filePath,
 				event: "skill_expansion",
 				error: err instanceof Error ? err.message : String(err),
 			});
-			return text; // Return original on error
+			return text; // 展开失败时返回原文本，避免丢失用户输入。
 		}
 	}
 
@@ -1341,12 +1275,12 @@ export class AgentSession {
 	 * @throws Error if text is an extension command
 	 */
 	async steer(text: string, images?: ImageContent[]): Promise<void> {
-		// Check for extension commands (cannot be queued)
+		// steering 不能排队扩展命令，先检查并拒绝这类输入。
 		if (text.startsWith("/")) {
 			this._throwIfExtensionCommand(text);
 		}
 
-		// Expand skill commands and prompt templates
+		// 在进入队列前展开 skill 和 prompt 模板。
 		let expandedText = this._expandSkillCommand(text);
 		expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
 
@@ -1361,12 +1295,12 @@ export class AgentSession {
 	 * @throws Error if text is an extension command
 	 */
 	async followUp(text: string, images?: ImageContent[]): Promise<void> {
-		// Check for extension commands (cannot be queued)
+		// follow-up 不能排队扩展命令，先检查并拒绝这类输入。
 		if (text.startsWith("/")) {
 			this._throwIfExtensionCommand(text);
 		}
 
-		// Expand skill commands and prompt templates
+		// 在进入队列前展开 skill 和 prompt 模板。
 		let expandedText = this._expandSkillCommand(text);
 		expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
 

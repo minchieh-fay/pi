@@ -109,7 +109,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 	// 创建事件流；网络请求在后台执行，调用方通过异步迭代接收结果。
 	const stream = new AssistantMessageEventStream();
 
-	// Start async processing
+	// 异步执行网络请求；函数先返回事件流，调用方随后从流中读取结果。
 	(async () => {
 		const output: AssistantMessage = {
 			role: "assistant",
@@ -161,6 +161,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 				},
 			);
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			// 先通知上层“开始生成”，之后的文本和工具事件都以这个 partial 为基础。
 			stream.push({ type: "start", partial: output });
 
 			// 解析 OpenAI 原始事件，并转换成 pi-ai 统一的增量事件。
@@ -187,7 +188,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 		} catch (error) {
 			for (const block of output.content) {
 				delete (block as { index?: number }).index;
-				// Streaming scratch buffers are only used during parsing; never persist them.
+				// partialJson 等字段只服务于流式解析，不能持久化到最终消息。
 				delete (block as { partialJson?: string }).partialJson;
 				delete (block as { customInput?: unknown }).customInput;
 			}
