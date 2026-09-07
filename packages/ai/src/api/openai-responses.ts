@@ -106,6 +106,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 	context: Context,
 	options?: OpenAIResponsesOptions,
 ): AssistantMessageEventStream => {
+	// 创建事件流；网络请求在后台执行，调用方通过异步迭代接收结果。
 	const stream = new AssistantMessageEventStream();
 
 	// Start async processing
@@ -129,7 +130,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 		};
 
 		try {
-			// Create OpenAI client
+			// 创建 OpenAI 客户端，并根据模型和当前会话准备认证信息。
 			const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
 			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
@@ -139,6 +140,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 				compat.supportsOpenAIGrammarTools,
 			);
 			const client = createClient(model, context, apiKey, options?.headers, options?.fetch, cacheSessionId);
+			// 把 system prompt、历史消息和工具定义转换为 Responses API 请求体。
 			let params = buildParams(model, context, options, compat, grammarToolInputProperties);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
@@ -149,6 +151,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: 0,
 			};
+			// 发起流式请求；重试逻辑只包裹 provider 请求，不重复构造上层 agent 状态。
 			const { data: openaiStream, response } = await retryProviderRequest(
 				() => client.responses.create(params, requestOptions).withResponse(),
 				{
@@ -160,6 +163,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			stream.push({ type: "start", partial: output });
 
+			// 解析 OpenAI 原始事件，并转换成 pi-ai 统一的增量事件。
 			await processResponsesStream(openaiStream, output, stream, model, {
 				serviceTier: options?.serviceTier,
 				grammarToolInputProperties,
@@ -177,6 +181,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 				throw new Error(output.errorMessage || "An unknown error occurred");
 			}
 
+			// provider 正常结束后发送最终消息，并关闭事件流。
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {

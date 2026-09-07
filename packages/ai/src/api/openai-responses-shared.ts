@@ -141,6 +141,7 @@ export function convertResponsesMessages<TApi extends Api>(
 	allowedToolCallProviders: ReadonlySet<string>,
 	options?: ConvertResponsesMessagesOptions,
 ): ResponseInput {
+	// 把 pi-ai 的统一消息格式转换成 OpenAI Responses API 的 input 格式。
 	const messages: ResponseInput = [];
 	const loadedToolNames = new Set<string>();
 
@@ -436,7 +437,9 @@ export async function processResponsesStream<TApi extends Api>(
 	model: Model<TApi>,
 	options?: OpenAIResponsesStreamOptions,
 ): Promise<void> {
+	// 消费 OpenAI 的原始流式事件，并逐步构造完整的 AssistantMessage。
 	let sawTerminalResponseEvent = false;
+	// 按 output_index 保存正在生成的文本、思考或工具调用内容块。
 	const outputSlots = new Map<number, ResponsesOutputSlot>();
 	const reasoningBlocksById = new Map<string, ThinkingContent>();
 	const applyMessagePhaseStopReason = (item: ResponseOutputItem): void => {
@@ -597,6 +600,7 @@ export async function processResponsesStream<TApi extends Api>(
 
 	for await (const event of openaiStream) {
 		if (event.type === "response.created") {
+			// 保存 provider 返回的响应 ID，便于后续诊断和消息追踪。
 			output.responseId = event.response.id;
 		} else if (event.type === "response.output_item.added") {
 			createSlot(event.output_index, event.item);
@@ -631,6 +635,7 @@ export async function processResponsesStream<TApi extends Api>(
 				partial: output,
 			});
 		} else if (event.type === "response.output_text.delta") {
+			// 追加模型新生成的文本，并把增量事件推送给上层。
 			const slot = getSlot(event.output_index, "text");
 			if (!slot) continue;
 			slot.block.text += event.delta;
@@ -651,6 +656,7 @@ export async function processResponsesStream<TApi extends Api>(
 				partial: output,
 			});
 		} else if (event.type === "response.function_call_arguments.delta") {
+			// 工具参数也是流式返回的，先累积 JSON，再尽可能解析当前参数。
 			const slot = getSlot(event.output_index, "toolCall");
 			if (!slot || slot.block.partialJson === undefined) continue;
 			slot.block.partialJson += event.delta;
@@ -739,6 +745,7 @@ export async function processResponsesStream<TApi extends Api>(
 				outputSlots.delete(event.output_index);
 			}
 		} else if (event.type === "response.completed" || event.type === "response.incomplete") {
+			// 收到终止事件后计算 usage、stop reason 和最终响应状态。
 			finalizeResponse(event.response);
 		} else if (event.type === "error") {
 			throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
@@ -756,6 +763,7 @@ export async function processResponsesStream<TApi extends Api>(
 		}
 	}
 	if (!sawTerminalResponseEvent) {
+		// 没有终止事件说明 provider 返回不完整，不能视为正常响应。
 		throw new Error("OpenAI Responses stream ended before a terminal response event");
 	}
 }

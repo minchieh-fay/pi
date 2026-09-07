@@ -1100,9 +1100,12 @@ export class AgentSession {
 	// =========================================================================
 
 	private async _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void> {
+		// 标记会话正在运行，并在 agent 结束后处理重试、压缩和排队消息。
 		this._isAgentRunActive = true;
 		try {
+			// Agent.prompt 会进入底层 agentLoop，真正发起一次 LLM 请求。
 			await this.agent.prompt(messages);
+			// 某些异常或排队消息需要从当前上下文继续下一轮。
 			while (await this._handlePostAgentRun()) {
 				await this.agent.continue();
 			}
@@ -1154,12 +1157,13 @@ export class AgentSession {
 	 * @throws Error if no model selected or no API key available (when not streaming)
 	 */
 	async prompt(text: string, options?: PromptOptions): Promise<void> {
+		// 这是 coding-agent 对外的 prompt 入口，负责把原始文本整理成用户消息。
 		const expandPromptTemplates = options?.expandPromptTemplates ?? true;
 		const preflightResult = options?.preflightResult;
 		let messages: AgentMessage[] | undefined;
 
 		try {
-			// Handle extension commands first (execute immediately, even during streaming)
+			// 扩展命令由扩展自己处理，不会进入普通 LLM prompt。
 			// Extension commands manage their own LLM interaction via pi.sendMessage()
 			if (expandPromptTemplates && text.startsWith("/")) {
 				const handled = await this._tryExecuteExtensionCommand(text);
@@ -1176,7 +1180,7 @@ export class AgentSession {
 				);
 			}
 
-			// Emit input event for extension interception (before skill/template expansion)
+			// 允许扩展在 skill 和模板展开前拦截或修改用户输入。
 			let currentText = text;
 			let currentImages = options?.images;
 			if (this._extensionRunner.hasHandlers("input")) {
@@ -1196,14 +1200,14 @@ export class AgentSession {
 				}
 			}
 
-			// Expand skill commands (/skill:name args) and prompt templates (/template args)
+			// 展开 skill 命令和基于文件的 prompt 模板。
 			let expandedText = currentText;
 			if (expandPromptTemplates) {
 				expandedText = this._expandSkillCommand(expandedText);
 				expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
 			}
 
-			// If streaming, queue via steer() or followUp() based on option
+			// 当前已有 LLM 请求时，把新输入放入 steering 或 follow-up 队列。
 			if (this.isStreaming) {
 				if (!options?.streamingBehavior) {
 					throw new Error(
@@ -1250,7 +1254,7 @@ export class AgentSession {
 				await this._checkCompaction(lastAssistant, false);
 			}
 
-			// Build messages array (custom message if any, then user message)
+			// 构造本次发送给 agent 的消息数组，用户消息排在扩展消息之后。
 			messages = [];
 
 			// Add user message
@@ -1270,7 +1274,7 @@ export class AgentSession {
 			}
 			this._pendingNextTurnMessages = [];
 
-			// Emit before_agent_start extension event
+			// 在启动 agent 前让扩展追加消息或修改本轮 system prompt。
 			const result = await this._extensionRunner.emitBeforeAgentStart(
 				expandedText,
 				currentImages,
@@ -1310,6 +1314,7 @@ export class AgentSession {
 		}
 
 		preflightResult?.(true);
+		// 进入 agent 生命周期，后续由 agentLoop 发送消息并消费 LLM 返回。
 		await this._runAgentPrompt(messages);
 	}
 

@@ -348,12 +348,15 @@ export class Agent {
 	async prompt(message: AgentMessage | AgentMessage[]): Promise<void>;
 	async prompt(input: string, images?: ImageContent[]): Promise<void>;
 	async prompt(input: string | AgentMessage | AgentMessage[], images?: ImageContent[]): Promise<void> {
+		// 一个 Agent 同时只允许运行一个主 prompt，运行期间的新消息必须进入队列。
 		if (this.activeRun) {
 			throw new Error(
 				"Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion.",
 			);
 		}
+		// 把字符串、单条消息和消息数组统一成 agent loop 使用的消息数组。
 		const messages = this.normalizePromptInput(input, images);
+		// 启动一次完整的 agent 生命周期。
 		await this.runPromptMessages(messages);
 	}
 
@@ -410,7 +413,9 @@ export class Agent {
 		messages: AgentMessage[],
 		options: { skipInitialSteeringPoll?: boolean } = {},
 	): Promise<void> {
+		// 生命周期包装器负责设置 streaming 状态、创建 AbortSignal 并清理运行状态。
 		await this.runWithLifecycle(async (signal) => {
+			// agent loop 通过 processEvents 更新 Agent 状态并通知订阅者。
 			await runAgentLoop(
 				messages,
 				this.createContextSnapshot(),
@@ -424,6 +429,7 @@ export class Agent {
 
 	private async runContinuation(): Promise<void> {
 		await this.runWithLifecycle(async (signal) => {
+			// 从已有的用户消息或工具结果继续请求下一轮 LLM 响应。
 			await runAgentLoopContinue(
 				this.createContextSnapshot(),
 				this.createLoopConfig(),

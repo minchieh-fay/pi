@@ -36,8 +36,10 @@ export function agentLoop(
 	signal: AbortSignal | undefined,
 	streamFn: StreamFn,
 ): EventStream<AgentEvent, AgentMessage[]> {
+	// 创建事件流，让调用方可以边接收模型输出边更新界面。
 	const stream = createAgentStream();
 
+	// 后台启动真正的 agent 循环，结束时用完整消息列表结束事件流。
 	void runAgentLoop(
 		prompts,
 		context,
@@ -101,7 +103,9 @@ export async function runAgentLoop(
 	signal: AbortSignal | undefined,
 	streamFn: StreamFn,
 ): Promise<AgentMessage[]> {
+	// 复制本次新增消息，避免直接修改调用方传入的数组。
 	const newMessages: AgentMessage[] = [...prompts];
+	// 当前上下文由历史消息和本次用户消息组成。
 	const currentContext: AgentContext = {
 		...context,
 		messages: [...context.messages, ...prompts],
@@ -114,6 +118,7 @@ export async function runAgentLoop(
 		await emit({ type: "message_end", message: prompt });
 	}
 
+	// 进入共享循环，负责模型调用、工具调用和后续轮次。
 	await runLoop(currentContext, newMessages, config, signal, emit, streamFn ?? getDefaultStreamFn());
 	return newMessages;
 }
@@ -161,17 +166,21 @@ async function runLoop(
 	emit: AgentEventSink,
 	streamFunction: StreamFn,
 ): Promise<void> {
+	// 上下文会随着工具结果和后续用户消息不断增长。
 	let currentContext = initialContext;
+	// config 保存当前模型、消息转换器和工具执行策略。
 	let config = initialConfig;
 	let lastCompletedTurn: PrepareNextTurnContext | undefined;
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
 
 	// Outer loop: continues when queued follow-up messages arrive after agent would stop
+	// 外层循环处理 agent 即将结束后才到达的 follow-up 消息。
 	while (true) {
 		let hasMoreToolCalls = true;
 
 		// Inner loop: process tool calls and steering messages
+		// 内层循环保证工具结果或 steering 消息处理完后再请求下一次响应。
 		while (hasMoreToolCalls || pendingMessages.length > 0) {
 			if (lastCompletedTurn) {
 				const nextTurnSnapshot = await config.prepareNextTurn?.(lastCompletedTurn);
@@ -208,7 +217,7 @@ async function runLoop(
 				pendingMessages = [];
 			}
 
-			// Stream assistant response
+			// 向 LLM 发送当前完整上下文，并等待 assistant 消息完成。
 			const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFunction);
 			newMessages.push(message);
 
@@ -218,7 +227,7 @@ async function runLoop(
 				return;
 			}
 
-			// Check for tool calls
+			// 检查模型是否要求执行工具，工具结果随后会放回上下文。
 			const toolCalls = message.content.filter((c) => c.type === "toolCall");
 
 			const toolResults: ToolResultMessage[] = [];
@@ -240,6 +249,7 @@ async function runLoop(
 				}
 			}
 
+			// assistant 响应和工具执行都完成后，通知上层一轮结束。
 			await emit({ type: "turn_end", message, toolResults });
 
 			lastCompletedTurn = {
@@ -283,6 +293,7 @@ async function streamAssistantResponse(
 	emit: AgentEventSink,
 	streamFunction: StreamFn,
 ): Promise<AssistantMessage> {
+	// 这是 agent 到 LLM 的边界：先整理上下文，再转换成 provider 消息格式。
 	// Apply context transform if configured (AgentMessage[] → AgentMessage[])
 	let messages = context.messages;
 	if (config.transformContext) {
@@ -290,6 +301,7 @@ async function streamAssistantResponse(
 	}
 
 	// Convert to LLM-compatible messages (AgentMessage[] → Message[])
+	// 把内部消息转换为标准的 user、assistant 和 toolResult 消息。
 	const llmMessages = await config.convertToLlm(messages);
 
 	// Build LLM context
@@ -303,6 +315,7 @@ async function streamAssistantResponse(
 	const resolvedApiKey =
 		(config.getApiKey ? await config.getApiKey(config.model.provider) : undefined) || config.apiKey;
 
+	// 调用具体 provider，返回可异步遍历的流式事件。
 	const response = await streamFunction(config.model, llmContext, {
 		...config,
 		apiKey: resolvedApiKey,
@@ -312,9 +325,11 @@ async function streamAssistantResponse(
 	let partialMessage: AssistantMessage | null = null;
 	let addedPartial = false;
 
+	// 持续接收 provider 的增量事件，并同步更新上下文和上层 UI。
 	for await (const event of response) {
 		switch (event.type) {
 			case "start":
+				// provider 开始生成消息，把 assistant 占位消息放入上下文。
 				partialMessage = event.partial;
 				context.messages.push(partialMessage);
 				addedPartial = true;
@@ -331,6 +346,7 @@ async function streamAssistantResponse(
 			case "toolcall_delta":
 			case "toolcall_end":
 				if (partialMessage) {
+					// 文本、思考和工具参数的增量都用最新 partial 覆盖旧状态。
 					partialMessage = event.partial;
 					context.messages[context.messages.length - 1] = partialMessage;
 					await emit({
@@ -343,6 +359,7 @@ async function streamAssistantResponse(
 
 			case "done":
 			case "error": {
+				// done 或 error 都通过 result() 获取最终完整 assistant 消息。
 				const finalMessage = await response.result();
 				if (addedPartial) {
 					context.messages[context.messages.length - 1] = finalMessage;

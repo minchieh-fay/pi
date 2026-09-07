@@ -33,6 +33,7 @@ import {
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
 // or invoke low-level agent loops without supplying streamFn. Agent core remains
 // provider-agnostic and does not import pi-ai/compat itself.
+// 为没有显式传入 streamFn 的 Agent 提供统一的 provider 流式实现。
 setDefaultStreamFn(streamSimple);
 
 export interface CreateAgentSessionOptions {
@@ -310,6 +311,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		},
 		convertToLlm: convertToLlmWithBlockImages,
 		streamFn: async (model, context, options) => {
+			// 从设置中读取重试和超时参数，统一注入每次 provider 请求。
 			const providerRetrySettings = settingsManager.getProviderRetrySettings();
 			const httpIdleTimeoutMs = settingsManager.getHttpIdleTimeoutMs();
 			// SDKs treat timeout=0 as 0ms (immediate timeout), not "no timeout".
@@ -319,6 +321,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const websocketConnectTimeoutMs =
 				options?.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs();
 			const headerRunner = extensionRunnerRef.current;
+			// ModelRuntime 负责认证、provider 选择和实际的 streamSimple 调用。
 			return modelRuntime.streamSimple(model, context, {
 				...options,
 				timeoutMs,
