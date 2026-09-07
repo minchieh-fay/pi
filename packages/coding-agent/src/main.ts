@@ -706,59 +706,23 @@ export async function main(args: string[], options?: MainOptions) {
 	const startupSettingsManager = SettingsManager.create(cwd, agentDir);
 	const startupSettingsDiagnostics = collectSettingsDiagnostics(startupSettingsManager);
 
-	// 确定会话目录：优先使用 --session-dir，其次环境变量，最后从设置中读取
-	const envSessionDir = process.env[ENV_SESSION_DIR];
-	const sessionDir =
-		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
-		(envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
-		startupSettingsManager.getSessionDir();
 	// 创建会话管理器，根据 --session/--fork/--resume/--continue 等参数解析目标会话
-	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
-	// 检查会话的 cwd 是否缺失（会话属于另一个项目）
-	const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);
-	if (missingSessionCwdIssue) {
-		if (appMode === "interactive") {
-			// 交互模式下询问用户如何处理
-			const selectedCwd = await promptForMissingSessionCwd(missingSessionCwdIssue, startupSettingsManager);
-			if (!selectedCwd) {
-				process.exit(0);
-			}
-			sessionManager = SessionManager.open(missingSessionCwdIssue.sessionFile!, sessionDir, selectedCwd);
-		} else {
-			// 非交互模式下直接报错退出
-			console.error(chalk.red(new MissingSessionCwdError(missingSessionCwdIssue).message));
-			process.exit(1);
-		}
-	}
-	// 如果指定了 --name，则为会话设置名称
-	if (parsed.name !== undefined) {
-		const name = normalizeSessionName(parsed.name);
-		if (name === undefined) {
-			console.error(chalk.red("Error: --name requires a non-empty value"));
-			process.exit(1);
-		}
-		sessionManager.appendSessionInfo(name);
-	}
-	time("createSessionManager");
+	let sessionManager = await createSessionManager(parsed, cwd, undefined, startupSettingsManager);
 
 	// 创建项目信任存储
 	const trustStore = new ProjectTrustStore(agentDir);
-	const sessionCwd = sessionManager.getCwd();
-	// 决定是否在重载时自动信任当前 cwd
-	const autoTrustOnReloadCwd =
-		parsed.projectTrustOverride === undefined && !hasTrustRequiringProjectResources(sessionCwd)
-			? sessionCwd
-			: undefined;
+	//const sessionCwd = sessionManager.getCwd();
+
 	// 信任提示模式：帮助/列表命令使用 print 模式，否则使用实际运行模式
-	const trustPromptMode: AppMode = parsed.help || parsed.listModels !== undefined ? "print" : appMode;
+	const trustPromptMode: AppMode = appMode
 	// 缓存每个 cwd 的信任状态，避免重复询问
 	const projectTrustByCwd = new Map<string, boolean>();
 
 	// 解析扩展、技能、提示模板、主题的文件路径
-	const resolvedExtensionPaths = resolveCliPaths(cwd, parsed.extensions);
-	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
-	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
-	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
+	// const resolvedExtensionPaths = resolveCliPaths(cwd, parsed.extensions);
+	// const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
+	// const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
+	// const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
 
 	// 运行时工厂：每次创建新的 agent 运行时会话时调用
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
@@ -815,10 +779,10 @@ export async function main(args: string[], options?: MainOptions) {
 					}
 				: undefined,
 			resourceLoaderOptions: {
-				additionalExtensionPaths: resolvedExtensionPaths,
-				additionalSkillPaths: resolvedSkillPaths,
-				additionalPromptTemplatePaths: resolvedPromptTemplatePaths,
-				additionalThemePaths: resolvedThemePaths,
+				additionalExtensionPaths: undefined,
+				additionalSkillPaths: undefined,
+				additionalPromptTemplatePaths: undefined,
+				additionalThemePaths: undefined,
 				noExtensions: parsed.noExtensions,
 				noSkills: parsed.noSkills,
 				noPromptTemplates: parsed.noPromptTemplates,
@@ -898,7 +862,7 @@ export async function main(args: string[], options?: MainOptions) {
 			diagnostics,
 		};
 	};
-	time("createRuntime");
+	//time("createRuntime");
 
 	// 创建主运行时
 	const runtime = await createAgentSessionRuntime(createRuntime, {
@@ -906,40 +870,40 @@ export async function main(args: string[], options?: MainOptions) {
 		agentDir,
 		sessionManager,
 	});
-	time("createAgentSessionRuntime");
+	//time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;
 	const { settingsManager, modelRuntime, resourceLoader } = services;
 	// 设置终端能力覆盖
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	// 再次应用最新的 HTTP 代理设置
-	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
+	//applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
 
 	// --help：输出帮助信息并退出
-	if (parsed.help) {
-		reportDiagnostics(startupSettingsDiagnostics);
-		const extensionFlags = resourceLoader
-			.getExtensions()
-			.extensions.flatMap((extension) => Array.from(extension.flags.values()));
-		printHelp(extensionFlags);
-		process.exit(0);
-	}
+	// if (parsed.help) {
+	// 	reportDiagnostics(startupSettingsDiagnostics);
+	// 	const extensionFlags = resourceLoader
+	// 		.getExtensions()
+	// 		.extensions.flatMap((extension) => Array.from(extension.flags.values()));
+	// 	printHelp(extensionFlags);
+	// 	process.exit(0);
+	// }
 
 	// --list-models：列出可用模型并退出
-	if (parsed.listModels !== undefined) {
-		reportDiagnostics(startupSettingsDiagnostics);
-		const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
-		await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000));
-		process.exit(0);
-	}
+	// if (parsed.listModels !== undefined) {
+	// 	reportDiagnostics(startupSettingsDiagnostics);
+	// 	const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
+	// 	await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000));
+	// 	process.exit(0);
+	// }
 
 	// 读取管道输入的 stdin 内容（RPC 模式除外）
 	let stdinContent: string | undefined;
 	if (appMode !== "rpc") {
 		stdinContent = await readPipedStdin();
 		// 如果有 stdin 内容且在交互模式下，自动切换到打印模式
-		if (stdinContent !== undefined && appMode === "interactive") {
-			appMode = "print";
-		}
+		// if (stdinContent !== undefined && appMode === "interactive") {
+		// 	appMode = "print";
+		// }
 	}
 
 
@@ -951,9 +915,9 @@ export async function main(args: string[], options?: MainOptions) {
 	);
 
 	// 初始化主题验证器
-	setThemeJsonValidator(validateThemeJson);
+	//setThemeJsonValidator(validateThemeJson);
 	// 初始化主题
-	initTheme(settingsManager.getTheme(), appMode === "interactive");
+	//initTheme(settingsManager.getTheme(), appMode === "interactive");
 
 
 	
@@ -1004,7 +968,6 @@ export async function main(args: string[], options?: MainOptions) {
 		const interactiveMode = new InteractiveMode(runtime, {
 			startupDiagnostics,
 			modelFallbackMessage,
-			autoTrustOnReloadCwd,
 			initialMessage,
 			initialImages,
 			initialMessages: parsed.messages,
