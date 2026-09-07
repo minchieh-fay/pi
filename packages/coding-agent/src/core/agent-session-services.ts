@@ -136,7 +136,7 @@ export async function createAgentSessionServices(
 	options: CreateAgentSessionServicesOptions,
 ): Promise<AgentSessionServices> {
 	const cwd = resolvePath(options.cwd);
-	const agentDir = options.agentDir ? resolvePath(options.agentDir) : getAgentDir();
+	const agentDir = resolvePath(options.agentDir ?? getAgentDir());
 	const modelRuntime =
 		options.modelRuntime ??
 		(await ModelRuntime.create({

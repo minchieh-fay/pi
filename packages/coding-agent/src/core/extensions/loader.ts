@@ -31,7 +31,6 @@ import type { ExecOptions } from "../exec.ts";
 import { execCommand } from "../exec.ts";
 import { readPiManifest } from "../pi-manifest.ts";
 import { createSyntheticSourceInfo } from "../source-info.ts";
-import { time } from "../timings.ts";
 import type {
 	EntryRenderer,
 	Extension,
@@ -557,7 +556,6 @@ async function initializeExtension(
 		load.discard();
 		throw error;
 	}
-	time(`${extensionPath} factory`, "extensions");
 	return extension;
 }
 
@@ -572,7 +570,6 @@ async function loadExtension(
 
 	try {
 		const factory = await loadExtensionModule(resolvedPath, cacheToken);
-		time(`${extensionPath} module import`, "extensions");
 		if (!factory) {
 			return { extension: null, error: `Extension does not export a valid factory function: ${extensionPath}` };
 		}

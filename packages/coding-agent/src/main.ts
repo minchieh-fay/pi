@@ -257,10 +257,6 @@ export async function main(_args: string[], options?: MainOptions) {
 				},
 			},
 			resourceLoaderOptions: {
-				additionalExtensionPaths: undefined,
-				additionalSkillPaths: undefined,
-				additionalPromptTemplatePaths: undefined,
-				additionalThemePaths: undefined,
 				noExtensions: parsed.noExtensions,
 				noSkills: parsed.noSkills,
 				noPromptTemplates: parsed.noPromptTemplates,

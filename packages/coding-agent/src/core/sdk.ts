@@ -15,7 +15,6 @@ import type { ResourceLoader } from "./resource-loader.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
 import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
-import { time } from "./timings.ts";
 import {
 	createBashTool,
 	createCodingTools,
@@ -185,7 +184,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	if (!resourceLoader) {
 		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
 		await resourceLoader.reload();
-		time("resourceLoader.reload");
 	}
 
 	// Check if session has existing data to restore
