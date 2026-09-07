@@ -61,37 +61,6 @@ export class ModelRegistry {
 		return this.runtime.hasConfiguredAuth(model.provider);
 	}
 
-	async getApiKeyAndHeaders(model: Model<Api>): Promise<ResolvedRequestAuth> {
-		try {
-			const resolution = await this.runtime.getAuth(model);
-			if (!resolution) {
-				const compatibility = this.runtime.getCompatibilityRequestConfig(model);
-				if (compatibility.authHeader) {
-					return { ok: false, error: `No API key found for "${model.provider}"` };
-				}
-				return { ok: true, headers: compatibility.headers };
-			}
-			return {
-				ok: true,
-				apiKey: resolution.auth.apiKey,
-				headers: resolution.auth.headers,
-				...(resolution.auth.baseUrl ? { baseUrl: resolution.auth.baseUrl } : {}),
-				env: resolution.env,
-			};
-		} catch (error) {
-			const cause = error instanceof Error ? error.cause : undefined;
-			const message =
-				cause instanceof Error ? cause.message : error instanceof Error ? error.message : String(error);
-			return {
-				ok: false,
-				error:
-					message === "authHeader requires a resolved API key"
-						? `No API key found for "${model.provider}"`
-						: message,
-			};
-		}
-	}
-
 	getProviderAuthStatus(provider: string): AuthStatus {
 		return this.runtime.getProviderAuthStatus(provider);
 	}
